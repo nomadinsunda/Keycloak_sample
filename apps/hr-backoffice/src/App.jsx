@@ -55,7 +55,7 @@ function Dashboard({ me }) {
       </div>
       <main className="mx-auto max-w-5xl space-y-6 p-4">
         <TokenInfo me={me} />
-        {isHrAdmin ? <EmployeeAdmin /> : (
+        {isHrAdmin ? <EmployeeAdmin me={me} /> : (
           <div role="alert" className="alert alert-warning"><span>직원 관리는 HR_ADMIN 역할이 필요합니다.</span></div>
         )}
         <SampleApiCheck />
@@ -78,7 +78,7 @@ function TokenInfo({ me }) {
 
 const EMPTY_FORM = { employeeNo: '', lastName: '', firstName: '', department: '', initialPassword: '', hrAdmin: false }
 
-function EmployeeAdmin() {
+function EmployeeAdmin({ me }) {
   const [employees, setEmployees] = useState([])
   const [form, setForm] = useState(EMPTY_FORM)
   const [message, setMessage] = useState(null)
@@ -104,6 +104,17 @@ function EmployeeAdmin() {
       setBusy(false)
     }
   }
+  const deactivate = async (employeeNo) => {
+    if (!window.confirm(`${employeeNo} 직원을 비활성화(퇴사 처리)할까요?\nKeycloak 계정이 잠기고 로그인 세션이 모두 폐기됩니다.`)) return
+    setMessage(null)
+    try {
+      await api.post(`/employee-service/employees/${encodeURIComponent(employeeNo)}/deactivate`)
+      setMessage({ type: 'success', text: `${employeeNo} 비활성화 완료. 이미 발급된 Access Token은 최대 15분 동안 유효합니다.` })
+      load()
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message })
+    }
+  }
   const set = (key) => (e) => setForm({ ...form, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
 
   return (
@@ -127,7 +138,7 @@ function EmployeeAdmin() {
         <h2 className="card-title mt-6">직원 목록</h2>
         <div className="overflow-x-auto">
           <table className="table table-zebra">
-            <thead><tr><th>사번</th><th>이름</th><th>부서</th><th>상태</th><th>역할</th><th>계정 발급</th></tr></thead>
+            <thead><tr><th>사번</th><th>이름</th><th>부서</th><th>상태</th><th>역할</th><th>계정 발급</th><th /></tr></thead>
             <tbody>
               {employees.map((e) => (
                 <tr key={e.employeeNo}>
@@ -137,6 +148,11 @@ function EmployeeAdmin() {
                   <td>{e.status}</td>
                   <td>{e.roles.join(', ')}</td>
                   <td><span className={`badge ${e.provisioningStatus === 'COMPLETED' ? 'badge-success' : 'badge-error'}`}>{e.provisioningStatus}</span></td>
+                  <td>
+                    {e.status === 'ACTIVE' && e.employeeNo !== me.employeeNo && (
+                      <button className="btn btn-xs btn-error btn-outline" onClick={() => deactivate(e.employeeNo)}>비활성화</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

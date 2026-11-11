@@ -19,6 +19,9 @@ pmart:
     audiences: pmart-employee-auth,pmart-employee-service,pmart-sample-api
     access-token-ttl: 15m
     cookie-name: PMART_EMP_AT
+    # Refresh Token: 로그인 시점부터 8시간 고정 (D19)
+    refresh-token-ttl: 8h
+    refresh-cookie-name: PMART_EMP_RT
   login-transaction-ttl: 5m
   keycloak:
     # 서버 간 호출(토큰 교환, JWKS, Admin API)은 Gateway를 경유하지 않고 내부 주소로 직접 호출

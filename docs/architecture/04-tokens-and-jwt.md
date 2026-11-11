@@ -70,7 +70,7 @@
 
 - 이름·이메일 같은 개인정보는 넣지 않습니다. 필요하면 API로 조회합니다.
 - `permissions`처럼 세분화된 권한은 넣지 않습니다. 테스트 범위에서는 `roles`로 충분합니다.
-- Refresh Token 형식과 정책은 [미결정 #6](../open-questions.md)에서 따로 정합니다.
+- Refresh Token은 아래 [PMart Refresh Token](#pmart-refresh-token--확정-d19) 절을 참고하세요.
 
 ### 검증 규칙
 
@@ -87,6 +87,39 @@
 - MFC별 접근처럼 **데이터에 종속된 인가는 업무 서비스가 추가로 검증**합니다.
 - Access Token은 짧은 수명, Refresh Token은 회전(Rotation)·폐기·재사용 탐지를 고려합니다.
 - Keycloak 계정 비활성화·퇴사·잠금 시 PMart 세션과 Refresh Token도 폐기되도록 **연동이 필요**합니다.
+
+## PMart Refresh Token — 확정 (D19)
+
+| 항목 | 내용 |
+|---|---|
+| 형식 | 무작위 값(256bit, Base64URL). JWT 아님 |
+| 저장 | Employee Auth DB `refresh_tokens`에 **SHA-256 해시만** 저장. 같은 로그인에서 이어진 토큰은 `family_id`로 묶음 |
+| 수명 | 로그인 시점 + **8시간 고정**. 갱신해도 연장하지 않으며, 지나면 다시 로그인 |
+| Rotation | `POST /employee-auth/refresh` 때마다 새 Access·Refresh Token 발급, 사용한 Refresh Token은 `used_at` 기록 |
+| 재사용 탐지 | 이미 사용된 Refresh Token이 다시 오면 탈취로 보고 **같은 family 전체 폐기** → 401 |
+| 갱신 시 확인 | Employee Service에서 재직 상태 재확인. `INACTIVE`면 그 직원의 모든 Refresh Token 폐기 → 401 |
+| 백오피스 전달 | `PMART_EMP_RT` 쿠키: `HttpOnly`, `SameSite=Lax`, `Path=/employee-auth`(갱신·로그아웃 요청에만 전송), `Max-Age`=남은 수명 |
+| CSRF | 쿠키로 인증하는 POST이므로 Gateway가 CSRF 검사 |
+| 갱신 실패 | 401과 함께 Access·Refresh 쿠키 모두 삭제 → SPA는 로그인 화면으로 |
+| 로그아웃 | 해당 family 폐기 + 두 쿠키 삭제 + Keycloak SSO 로그아웃 주소 반환 |
+| 정리 | 만료 1일 지난 행은 1시간마다 삭제 |
+
+- **SPA의 갱신 방식**: API가 401이면 `/employee-auth/refresh`를 호출한 뒤 원래 요청을 한 번 재시도합니다. 여러 요청이 동시에 401을 받아도 갱신은 한 번만 합니다. 같은 Refresh Token을 두 번 보내면 서버가 재사용으로 판단해 세션 전체를 폐기하기 때문입니다.
+- **알려진 제약**: 브라우저 탭 여러 개가 동시에 갱신하면 재사용으로 판단되어 로그아웃될 수 있습니다. 운영 수준이라면 짧은 유예 시간(grace period)을 두는 방법을 검토해야 합니다.
+- Flutter 앱용 Refresh Token 전달 방식(응답 본문 + 안전한 저장소)은 10단계에서 정합니다.
+
+## 퇴사·비활성화 — 확정 (D19)
+
+```text
+인사팀 백오피스 ── POST /employee-service/employees/{사번}/deactivate (HR_ADMIN, CSRF) ──> Gateway ──> Employee Service
+  1) 직원 DB 상태 INACTIVE
+  2) Keycloak Admin REST API: 계정 비활성화(enabled=false) + SSO 세션 종료  (Gateway 경유 안 함)
+  3) Employee Auth 내부 API /internal/sessions/revoke: 그 직원의 Refresh Token 전부 폐기  (Gateway 경유 안 함)
+```
+
+- 결과: 토큰 갱신 불가, Keycloak 재로그인 불가(계정 비활성화 화면)
+- **이미 발급된 Access Token은 남은 수명(최대 15분) 동안 유효**합니다. 즉시 차단이 필요하면 Access Token 차단 목록(`jti`) 등 별도 장치가 필요합니다.
+- 자기 자신은 비활성화할 수 없습니다(400).
 
 ## PMart의 3개 JWT 발급자
 

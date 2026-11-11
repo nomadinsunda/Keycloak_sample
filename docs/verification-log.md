@@ -65,9 +65,40 @@
 8. **Windows Git Bash의 curl 한글 인코딩**: curl 인자로 한글 JSON을 넘기면 UTF-8이 아닌 인코딩으로 전송됨. 테스트 스크립트는 UTF-8 파일로 본문을 보냄.
 9. **Well-known의 `token_endpoint`**: Gateway를 거쳐 조회해도 `token_endpoint`가 내부 주소(`http://keycloak:8080/...`)로 나옴. Gateway가 `Host` 헤더를 내부 주소로 바꿔 전달하기 때문. 브라우저는 `authorization_endpoint`만 쓰므로 영향 없음.
 
+## 2026-11-11 — 9단계 Refresh Token·퇴사 처리
+
+### 결과 요약
+
+- `scripts/e2e-test.sh`: **48개 항목 모두 통과** (기존 32개 + 신규 16개)
+- 브라우저 수동 확인은 하지 않음. 백오피스의 자동 갱신(401 → refresh → 재시도)은 Access Token 만료(15분)를 기다려야 해서, 쿠키 삭제로 만료 상황을 만드는 스크립트 검증으로 대신함
+
+| 검증 항목 | 결과 |
+|---|---|
+| Refresh Token 쿠키 `HttpOnly`, `Path=/employee-auth` | 동작 |
+| CSRF 토큰 없는 갱신 거부 | 동작 (403) |
+| Rotation: 갱신마다 Access·Refresh Token 모두 새로 발급 | 동작 |
+| Access Token 만료 후 Refresh Token으로 갱신 → API 호출 | 동작 |
+| 사용한 Refresh Token 재사용 → 거부 + 같은 세션의 정상 토큰까지 폐기 | 동작 |
+| 퇴사 처리 → 토큰 갱신 거부, 쿠키 삭제 | 동작 |
+| 퇴사 처리 → Keycloak 재로그인 거부 ("계정 비활성화") | 동작 |
+| 자기 자신 비활성화 거부 | 동작 (400) |
+
+### 설계에 없던 것을 구현하며 정한 것
+
+| 항목 | 정한 내용 | 이유 |
+|---|---|---|
+| Employee Auth 내부 API | `/internal/sessions/revoke` + 내부 API 키 | Employee Service가 퇴사 처리 시 Refresh Token 폐기를 요청하기 위해. Gateway 라우트 없음 |
+| 퇴사 처리 API | `POST /employee-service/employees/{사번}/deactivate` (HR_ADMIN) | 백오피스 직원 목록에 "비활성화" 버튼 |
+| 퇴사 처리 실패 시 | 직원 DB는 먼저 `INACTIVE`로 바꾸고, Keycloak·세션 정리 실패 시 502 + 재시도 안내 | DB가 `INACTIVE`이면 토큰 갱신과 로그인 확인 단계에서 이미 거부되므로 안전한 쪽으로 먼저 처리 |
+
+### 알게 된 점
+
+1. **동시 갱신과 재사용 탐지의 충돌**: 같은 Refresh Token으로 두 요청이 동시에 갱신하면 두 번째 요청은 재사용으로 판단되어 세션 전체가 폐기됨. SPA에서 갱신 요청을 하나로 묶어 해결했지만, 브라우저 탭 여러 개가 동시에 갱신하는 경우는 여전히 로그아웃될 수 있음. 운영 수준이라면 짧은 유예 시간(grace period)이 필요함.
+2. **퇴사 후 Access Token 유효 시간**: Refresh Token과 Keycloak 계정은 즉시 막히지만, 이미 발급된 Access Token은 최대 15분 동안 유효함. 자체 JWT를 쓰는 구조의 본질적인 제약이며, 즉시 차단이 필요하면 `jti` 차단 목록 같은 별도 장치가 필요함.
+3. **Keycloak 세션 정리는 명시적으로 호출**: 계정 비활성화(`enabled=false`)와 함께 `/users/{id}/logout`도 호출해 기존 Keycloak SSO 세션을 정리함. 비활성화만으로 기존 세션이 끊기는지는 따로 검증하지 않음.
+
 ### 남은 단계
 
-- 9단계 Refresh Token·퇴사 처리 (미결정 #6)
 - 10단계 Flutter 앱 (미결정 #3)
 - 11단계 LAN 메일
 - 자동화 테스트(JUnit, Testcontainers) 추가. Initializr가 만든 기본 테스트(`contextLoads`)는 DB 없이 실패하므로 삭제한 상태

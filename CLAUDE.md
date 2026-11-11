@@ -22,7 +22,7 @@
 
 - **PMart**: 국비 훈련생 교육용 MSA 커머스 프로젝트 (이 저장소는 그 Keycloak 적용 검증용)
 - **검증 범위**: PMart **직원(Employee) IAM 및 인증** — Keycloak 기반 직원 로그인, Employee Auth Service의 자체 JWT 발급, Keycloak 계정 프로비저닝, LAN 메일 실습 환경
-- **현재 상태**: 0~8단계 구현·검증 완료 (Keycloak, Gateway, Employee Auth/Employee Service, 샘플 API, 인사팀 백오피스). 남은 단계는 Refresh Token, Flutter, LAN 메일. 상세는 [`docs/verification-log.md`](docs/verification-log.md) (2026-11-11 기준)
+- **현재 상태**: 0~9단계 구현·검증 완료 (Keycloak, Gateway, Employee Auth/Employee Service, 샘플 API, 인사팀 백오피스, Refresh Token·퇴사 처리). 남은 단계는 Flutter, LAN 메일. 상세는 [`docs/verification-log.md`](docs/verification-log.md) (2026-11-11 기준)
 - **원본 설계 기록**: [`PMart_Employee_IAM_Authentication_Architecture.md`](PMart_Employee_IAM_Authentication_Architecture.md) — 주제별 정리본은 [`docs/`](docs/README.md)에 있습니다. 두 곳이 충돌하면 원본을 우선하고, 정리본을 고칩니다.
 
 ## 기술 스택 (설계 기준)
@@ -100,6 +100,14 @@
 - 클레임은 `iss`, `sub`(사번), `aud`, `iat`, `exp`, `jti`, `user_type`(`EMPLOYEE`), `roles`, `identity_provider`, `external_subject`(Keycloak UUID)입니다. 개인정보는 넣지 않습니다.
 - 테스트 범위의 역할은 `EMPLOYEE`, `HR_ADMIN`이고, `aud` 값은 `pmart-employee-auth`, `pmart-employee-service`, `pmart-sample-api`입니다.
 - 상세 형식과 검증 규칙은 [`docs/architecture/04-tokens-and-jwt.md`](docs/architecture/04-tokens-and-jwt.md)에 있습니다.
+
+## Refresh Token·퇴사 처리 — 확정 (D19)
+
+- Refresh Token은 무작위 값이며 DB에는 SHA-256 해시만 저장합니다. 로그인 시점부터 8시간 고정이고, 갱신할 때마다 새로 발급(Rotation)합니다.
+- 이미 사용된 Refresh Token이 다시 오면 그 로그인 세션 전체를 폐기합니다(재사용 탐지).
+- 백오피스에는 `PMART_EMP_RT` 쿠키(`HttpOnly`, `Path=/employee-auth`)로 전달하고, 갱신(`POST /employee-auth/refresh`)은 CSRF 검사 대상입니다.
+- 퇴사 처리: 직원 DB `INACTIVE` → Keycloak 계정 비활성화·세션 종료 → Refresh Token 전부 폐기. 이미 발급된 Access Token은 최대 15분 유효합니다.
+- 상세 내용은 [`docs/architecture/04-tokens-and-jwt.md`](docs/architecture/04-tokens-and-jwt.md)에 있습니다.
 
 ## 테스트용 인사팀 백오피스 계정: Employee Auth Service가 부팅 시 생성 — 확정
 
@@ -226,7 +234,7 @@ docker compose down -v            # 중지 + DB 삭제 (Realm·테스트 계정�
 
 - 각 Spring Boot 서비스는 `/error`를 `permitAll`로 열어 둡니다. 막으면 모든 오류가 403으로 바뀝니다.
 - 하위 서비스(Employee Auth, Employee Service, 샘플 API)는 CSRF·CORS를 끄고 `Authorization: Bearer`만 받습니다.
-- Employee Service 내부 API(`/internal/**`)는 Gateway 라우트가 없으며 `X-Internal-Api-Key`로 보호합니다.
+- Employee Service·Employee Auth Service의 내부 API(`/internal/**`)는 Gateway 라우트가 없으며 `X-Internal-Api-Key`로 보호합니다.
 - 역할(`EMPLOYEE`, `HR_ADMIN`)은 Employee Service DB에 둡니다. Keycloak에는 역할을 두지 않습니다.
 - 설계와 다른 결과나 새로 알게 된 함정은 `docs/verification-log.md`에 기록합니다.
 

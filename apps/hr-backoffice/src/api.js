@@ -22,7 +22,34 @@ export class ApiError extends Error {
   }
 }
 
-async function request(method, path, body, retried = false) {
+// Access Token(15분) 만료 시 Refresh Token 쿠키로 갱신 (D19).
+// 여러 요청이 동시에 401을 받아도 갱신은 한 번만 합니다.
+// (같은 Refresh Token을 두 번 보내면 서버가 재사용으로 판단해 세션 전체를 폐기하기 때문)
+let refreshing = null
+
+function refreshSession() {
+  refreshing ??= fetch(`${GATEWAY_URL}/employee-auth/refresh`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-XSRF-TOKEN': csrfToken ?? '' },
+  })
+    .then(async (res) => {
+      if (res.status === 403) {
+        // CSRF 토큰이 없거나 바뀐 경우 한 번 다시 받아서 재시도
+        await fetchCsrfToken()
+        res = await fetch(`${GATEWAY_URL}/employee-auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'X-XSRF-TOKEN': csrfToken },
+        })
+      }
+      return res.ok
+    })
+    .finally(() => { refreshing = null })
+  return refreshing
+}
+
+async function request(method, path, body, retried = false, refreshed = false) {
   const stateChanging = !['GET', 'HEAD'].includes(method)
   const headers = {}
   if (body !== undefined) headers['Content-Type'] = 'application/json'
@@ -35,10 +62,14 @@ async function request(method, path, body, retried = false) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
+  // Access Token 만료: 갱신 후 한 번만 재시도. 갱신도 실패하면 401 그대로 (로그인 화면으로)
+  if (res.status === 401 && !refreshed && (await refreshSession())) {
+    return request(method, path, body, retried, true)
+  }
   // CSRF 토큰이 없거나 바뀌었으면 한 번만 다시 받아서 재시도
   if (res.status === 403 && stateChanging && !retried) {
     csrfToken = null
-    return request(method, path, body, true)
+    return request(method, path, body, true, refreshed)
   }
   const text = await res.text()
   const data = text ? safeJson(text) : null

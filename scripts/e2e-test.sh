@@ -38,7 +38,7 @@ browser_login() {
       --data-urlencode "password-new=$newpass" --data-urlencode "password-confirm=$newpass" "$action")
   fi
   echo "$next" > "$WORK/callback_url"
-  location -c "$jar" -b "$jar" "$next"
+  [ -n "$next" ] && location -c "$jar" -b "$jar" "$next"
 }
 
 csrf_token() { # $1=jar
@@ -108,7 +108,36 @@ check "새 직원 /sample-api/hello" 200 "$(status -b "$EMP" "$GW/sample-api/hel
 check "새 직원 /sample-api/hr-only (권한 없음)" 403 "$(status -b "$EMP" "$GW/sample-api/hr-only")"
 check "새 직원 직원 목록 조회 (권한 없음)" 403 "$(status -b "$EMP" "$GW/employee-service/employees")"
 
-echo "== 9. 로그아웃 =="
+echo "== 9. Refresh Token (Rotation, 재사용 탐지) =="
+R="$WORK/r.jar"
+browser_login "$R" "$HR_TEST_USERNAME" "$HR_TEST_PASSWORD" > /dev/null
+grep "PMART_EMP_RT" "$R" | grep -q "#HttpOnly_" && ok "Refresh Token 쿠키 HttpOnly" || fail "Refresh Token 쿠키 없음 또는 HttpOnly 아님"
+[ "$(grep PMART_EMP_RT "$R" | awk '{print $3}')" = "/employee-auth" ] && ok "Refresh Token 쿠키 Path=/employee-auth" || fail "Refresh Token 쿠키 Path 오류"
+check "CSRF 토큰 없이 갱신" 403 "$(status -b "$R" -X POST -H "Origin: $ORIGIN" "$GW/employee-auth/refresh")"
+XSRF=$(csrf_token "$R")
+cp "$R" "$WORK/r-old.jar"                      # 갱신 전 Refresh Token 보관 (재사용 공격 재현용)
+OLD_AT=$(grep PMART_EMP_AT "$R" | awk '{print $7}'); OLD_RT=$(grep PMART_EMP_RT "$R" | awk '{print $7}')
+check "갱신 (Rotation)" 204 "$(status -b "$R" -c "$R" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-auth/refresh")"
+[ "$(grep PMART_EMP_RT "$R" | awk '{print $7}')" != "$OLD_RT" ] && ok "새 Refresh Token 발급" || fail "Refresh Token이 바뀌지 않음"
+[ "$(grep PMART_EMP_AT "$R" | awk '{print $7}')" != "$OLD_AT" ] && ok "새 Access Token 발급" || fail "Access Token이 바뀌지 않음"
+sed -i '/PMART_EMP_AT/d' "$R"                  # Access Token 만료 상황 재현
+check "Access Token 없이 API" 401 "$(status -b "$R" "$GW/sample-api/hello")"
+check "만료 후 갱신" 204 "$(status -b "$R" -c "$R" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-auth/refresh")"
+check "갱신 후 API" 200 "$(status -b "$R" "$GW/sample-api/hello")"
+check "사용한 Refresh Token 재사용 (탈취 상황)" 401 "$(status -b "$WORK/r-old.jar" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-auth/refresh")"
+check "재사용 탐지 후 정상 토큰도 폐기됨" 401 "$(status -b "$R" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-auth/refresh")"
+
+echo "== 10. 퇴사(비활성화) 처리 =="
+XSRF=$(csrf_token "$HR")
+check "자기 자신 비활성화 거부" 400 "$(status -b "$HR" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-service/employees/$HR_TEST_USERNAME/deactivate")"
+check "직원 비활성화" 200 "$(status -b "$HR" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-service/employees/$EMP_NO/deactivate")"
+EXSRF=$(csrf_token "$EMP")
+check "퇴사자 토큰 갱신 거부" 401 "$(status -b "$EMP" -c "$EMP" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $EXSRF" "$GW/employee-auth/refresh")"
+grep -q "PMART_EMP_AT" "$EMP" && fail "갱신 실패 후에도 Access Token 쿠키가 남음" || ok "갱신 실패 시 쿠키 삭제"
+landing=$(browser_login "$WORK/emp2.jar" "$EMP_NO" "New-Pass-5678")
+if [ "$landing" != "$ORIGIN/" ] && grep -qi "disabled" "$WORK/page.html"; then ok "퇴사자 재로그인 불가 (Keycloak: 계정 비활성화)"; else fail "퇴사자 재로그인 차단 확인 실패"; fi
+
+echo "== 11. 로그아웃 =="
 XSRF=$(csrf_token "$HR")
 logout=$(curl -s -D "$WORK/logout.h" -b "$HR" -c "$HR" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-auth/logout")
 grep -i "set-cookie: PMART_EMP_AT=;" "$WORK/logout.h" | grep -qi "max-age=0" && ok "로그아웃: JWT 쿠키 삭제" || fail "쿠키 삭제 헤더 없음"

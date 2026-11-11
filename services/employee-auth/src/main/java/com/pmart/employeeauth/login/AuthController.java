@@ -23,6 +23,10 @@ import com.pmart.employeeauth.employee.EmployeeDirectoryClient;
 import com.pmart.employeeauth.employee.EmployeeDirectoryClient.EmployeeStatus;
 import com.pmart.employeeauth.login.LoginTransactionRepository.LoginTransaction;
 import com.pmart.employeeauth.token.PmartTokenService;
+import com.pmart.employeeauth.token.RefreshTokenService;
+
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * 직원 로그인 API (Authorization Code + PKCE).
@@ -39,14 +43,17 @@ public class AuthController {
     private final KeycloakOidcClient oidc;
     private final EmployeeDirectoryClient employees;
     private final PmartTokenService tokens;
+    private final RefreshTokenService refreshTokens;
 
     public AuthController(AuthProperties props, LoginTransactionRepository transactions, KeycloakOidcClient oidc,
-                          EmployeeDirectoryClient employees, PmartTokenService tokens) {
+                          EmployeeDirectoryClient employees, PmartTokenService tokens,
+                          RefreshTokenService refreshTokens) {
         this.props = props;
         this.transactions = transactions;
         this.oidc = oidc;
         this.employees = employees;
         this.tokens = tokens;
+        this.refreshTokens = refreshTokens;
     }
 
     /** 1. 로그인 시작: state·nonce·PKCE 생성·저장 후 Keycloak 로그인 화면(Gateway /iam 경유)으로 이동 */
@@ -89,9 +96,41 @@ public class AuthController {
         }
 
         PmartTokenService.IssuedToken token = tokens.issue(employee.employeeNo(), employee.roles(), idToken.getSubject());
+        RefreshTokenService.Issued refresh = refreshTokens.issueNew(employee.employeeNo(), idToken.getSubject());
         log.info("직원 로그인 성공: {} roles={}", employee.employeeNo(), employee.roles());
         return redirect(props.backofficeOrigin() + "/")
                 .header(HttpHeaders.SET_COOKIE, tokens.accessTokenCookie(token.value()).toString())
+                .header(HttpHeaders.SET_COOKIE, tokens.refreshTokenCookie(refresh).toString())
+                .build();
+    }
+
+    /**
+     * Access Token 갱신 (D19). Refresh Token 쿠키로 인증하므로 Gateway가 CSRF를 검사합니다.
+     * Rotation: 새 Access·Refresh Token을 쿠키로 내려주고, 사용한 Refresh Token은 다시 쓸 수 없습니다.
+     * 갱신 때마다 재직 상태를 다시 확인해 퇴사·비활성화가 최대 Access Token 수명(15분) 안에 반영되게 합니다.
+     */
+    @PostMapping("/refresh")
+    public ResponseEntity<Void> refresh(HttpServletRequest request) {
+        String raw = cookieValue(request, props.jwt().refreshCookieName());
+        if (raw == null) {
+            return sessionEnded("refresh_token_missing");
+        }
+        RefreshTokenService.RotationResult result = refreshTokens.rotate(raw);
+        if (!result.success()) {
+            return sessionEnded("refresh_token_" + result.failure().name().toLowerCase());
+        }
+
+        RefreshTokenService.Session session = result.session();
+        EmployeeStatus employee = employees.findByKeycloakId(session.keycloakSubject()).orElse(null);
+        if (employee == null || !employee.active()) {
+            refreshTokens.revokeAllFor(session.employeeNo());
+            return sessionEnded("inactive_employee");
+        }
+
+        PmartTokenService.IssuedToken token = tokens.issue(employee.employeeNo(), employee.roles(), session.keycloakSubject());
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, tokens.accessTokenCookie(token.value()).toString())
+                .header(HttpHeaders.SET_COOKIE, tokens.refreshTokenCookie(result.next()).toString())
                 .build();
     }
 
@@ -107,12 +146,38 @@ public class AuthController {
                 "expiresAt", jwt.getExpiresAt().toString());
     }
 
-    /** 로그아웃: PMart JWT 쿠키 삭제 + Keycloak SSO 세션 로그아웃 주소 반환 (SPA가 이동) */
+    /** 로그아웃: Refresh Token 세션 폐기 + 쿠키 삭제 + Keycloak SSO 세션 로그아웃 주소 반환 (SPA가 이동) */
     @PostMapping("/logout")
-    public ResponseEntity<Map<String, String>> logout() {
+    public ResponseEntity<Map<String, String>> logout(HttpServletRequest request) {
+        String raw = cookieValue(request, props.jwt().refreshCookieName());
+        if (raw != null) {
+            refreshTokens.revokeFamily(raw);
+        }
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, tokens.expiredCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, tokens.expiredRefreshCookie().toString())
                 .body(Map.of("keycloakLogoutUrl", oidc.endSessionUrl()));
+    }
+
+    /** 갱신 실패: 두 쿠키를 지우고 401 → SPA는 로그인 화면으로 이동 */
+    private ResponseEntity<Void> sessionEnded(String reason) {
+        log.info("토큰 갱신 실패: {}", reason);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.SET_COOKIE, tokens.expiredCookie().toString())
+                .header(HttpHeaders.SET_COOKIE, tokens.expiredRefreshCookie().toString())
+                .build();
+    }
+
+    private static String cookieValue(HttpServletRequest request, String name) {
+        if (request.getCookies() == null) {
+            return null;
+        }
+        for (Cookie c : request.getCookies()) {
+            if (name.equals(c.getName()) && !c.getValue().isBlank()) {
+                return c.getValue();
+            }
+        }
+        return null;
     }
 
     private ResponseEntity<Void> loginFailed(String reason) {

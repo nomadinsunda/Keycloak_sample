@@ -53,6 +53,11 @@ public class EmployeeRepository {
                 """).param("kc", keycloakUserId).param("no", employeeNo).update();
     }
 
+    public void updateStatus(String employeeNo, String status) {
+        jdbc.sql("UPDATE employees SET status = :status, updated_at = now() WHERE employee_no = :no")
+                .param("status", status).param("no", employeeNo).update();
+    }
+
     public void markFailed(String employeeNo, String error) {
         String message = error == null ? "unknown" : error.substring(0, Math.min(error.length(), 500));
         jdbc.sql("""

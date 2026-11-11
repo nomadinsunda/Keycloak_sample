@@ -47,6 +47,7 @@ public class SecurityConfig {
             "/iam/**",
             "/employee-auth/oauth2/start",
             "/employee-auth/callback",
+            "/employee-auth/refresh",  // Refresh Token 쿠키로 인증 (Access Token 만료 후 호출)
             "/employee-auth/logout",
             "/csrf",
             "/actuator/health");

@@ -15,7 +15,8 @@ public record AuthProperties(
         EmployeeService employeeService,
         HrTestAccount hrTestAccount) {
 
-    public record Jwt(String issuer, List<String> audiences, Duration accessTokenTtl, String cookieName) {
+    public record Jwt(String issuer, List<String> audiences, Duration accessTokenTtl, String cookieName,
+                      Duration refreshTokenTtl, String refreshCookieName) {
     }
 
     public record Keycloak(String internalBaseUrl, String realm, String clientId, String clientSecret,

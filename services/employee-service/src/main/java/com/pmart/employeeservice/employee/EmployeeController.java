@@ -9,7 +9,11 @@ import jakarta.validation.constraints.Size;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -41,6 +45,15 @@ public class EmployeeController {
     @ResponseStatus(HttpStatus.CREATED)
     public EmployeeResponse register(@Valid @RequestBody RegisterEmployeeRequest request) {
         return EmployeeResponse.from(provisioning.register(request));
+    }
+
+    /** 퇴사·비활성화. 자기 자신은 비활성화할 수 없음 */
+    @PostMapping("/{employeeNo}/deactivate")
+    public EmployeeResponse deactivate(@PathVariable String employeeNo, @AuthenticationPrincipal Jwt jwt) {
+        if (employeeNo.equals(jwt.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "자기 자신은 비활성화할 수 없습니다.");
+        }
+        return EmployeeResponse.from(provisioning.deactivate(employeeNo));
     }
 
     public record RegisterEmployeeRequest(

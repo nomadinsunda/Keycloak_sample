@@ -24,6 +24,9 @@ pmart:
     client-secret: ${EMPLOYEE_SERVICE_CLIENT_SECRET}
   internal:
     api-key: ${INTERNAL_API_KEY}
+  employee-auth:
+    # 퇴사 시 세션 폐기 요청 (내부 직접 호출)
+    base-url: http://employee-auth:8080
 
 management:
   endpoints:

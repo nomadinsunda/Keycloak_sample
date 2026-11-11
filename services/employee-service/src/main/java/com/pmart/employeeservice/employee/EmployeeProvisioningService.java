@@ -22,10 +22,13 @@ public class EmployeeProvisioningService {
 
     private final EmployeeRepository repository;
     private final KeycloakAdminClient keycloak;
+    private final EmployeeAuthSessionClient sessions;
 
-    public EmployeeProvisioningService(EmployeeRepository repository, KeycloakAdminClient keycloak) {
+    public EmployeeProvisioningService(EmployeeRepository repository, KeycloakAdminClient keycloak,
+                                       EmployeeAuthSessionClient sessions) {
         this.repository = repository;
         this.keycloak = keycloak;
+        this.sessions = sessions;
     }
 
     public Employee register(EmployeeController.RegisterEmployeeRequest req) {
@@ -52,5 +55,30 @@ public class EmployeeProvisioningService {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak 계정 발급 실패. 같은 사번으로 다시 시도하세요.");
         }
         return repository.findByEmployeeNo(req.employeeNo()).orElseThrow();
+    }
+
+    /**
+     * 퇴사·비활성화 (D19).
+     * 1) 직원 DB 상태 INACTIVE  → 이후 토큰 갱신·로그인 거부
+     * 2) Keycloak 계정 비활성화 + SSO 세션 종료 → Keycloak 로그인 자체 불가
+     * 3) Employee Auth Service에 PMart Refresh Token 전부 폐기 요청
+     * 이미 발급된 Access Token은 남은 수명(최대 15분) 동안 유효합니다.
+     */
+    public Employee deactivate(String employeeNo) {
+        Employee employee = repository.findByEmployeeNo(employeeNo)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "없는 사번입니다: " + employeeNo));
+        repository.updateStatus(employeeNo, "INACTIVE");
+        try {
+            if (employee.keycloakUserId() != null) {
+                keycloak.disableAndLogout(employee.keycloakUserId());
+            }
+            sessions.revokeAll(employeeNo);
+        } catch (RuntimeException e) {
+            log.warn("직원 비활성화 후속 처리 실패: {}", employeeNo, e);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
+                    "직원 상태는 INACTIVE로 바뀌었지만 Keycloak·세션 정리에 실패했습니다. 다시 시도하세요.");
+        }
+        log.info("직원 비활성화 완료: {}", employeeNo);
+        return repository.findByEmployeeNo(employeeNo).orElseThrow();
     }
 }

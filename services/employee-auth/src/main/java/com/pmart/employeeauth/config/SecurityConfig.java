@@ -1,9 +1,20 @@
 package com.pmart.employeeauth.config;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.List;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
+import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
@@ -28,14 +39,41 @@ import com.pmart.employeeauth.token.SigningKeyService;
 @Configuration
 public class SecurityConfig {
 
+    /** 서비스 간 내부 API (/internal/**): Gateway 라우트 없음, 내부 API 키로 보호 */
     @Bean
+    @Order(1)
+    SecurityFilterChain internalApiChain(HttpSecurity http, AuthProperties props) throws Exception {
+        byte[] expected = props.employeeService().internalApiKey().getBytes(StandardCharsets.UTF_8);
+        return http
+                .securityMatcher("/internal/**")
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .addFilterBefore(new OncePerRequestFilter() {
+                    @Override
+                    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain)
+                            throws ServletException, IOException {
+                        String given = req.getHeader("X-Internal-Api-Key");
+                        if (given == null || !MessageDigest.isEqual(expected, given.getBytes(StandardCharsets.UTF_8))) {
+                            res.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+                            return;
+                        }
+                        chain.doFilter(req, res);
+                    }
+                }, AuthorizationFilter.class)
+                .build();
+    }
+
+    @Bean
+    @Order(2)
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/employee-auth/oauth2/start", "/employee-auth/callback",
-                                "/employee-auth/logout", "/.well-known/jwks.json", "/actuator/health", "/error").permitAll()
+                                "/employee-auth/refresh", "/employee-auth/logout",
+                                "/.well-known/jwks.json", "/actuator/health", "/error").permitAll()
                         .requestMatchers("/employee-auth/**").authenticated()
                         .anyRequest().denyAll())
                 .oauth2ResourceServer(rs -> rs.jwt(jwt -> {

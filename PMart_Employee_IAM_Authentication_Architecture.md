@@ -622,7 +622,7 @@ services:
 3. **Flutter 로그인 완료:** App Link/Universal Link의 실제 도메인, 일회성 ticket의 앱 바인딩·재사용 방지, PMart JWT 안전한 저장.
 4. **인사팀 백오피스(React SPA) 로그인 완료:** 결정됨 — PMart JWT를 `Set-Cookie`로 전달, CORS와 CSRF 방어는 Gateway에서 적용.
 5. **자체 JWT 형식:** 결정됨 — RS256, 클레임, Access Token 15분, 키 보관·회전 방식 (4.3절).
-6. **Refresh Token 정책:** 저장소, Rotation, 재사용 탐지, 계정 비활성화/퇴사 시 즉시 폐기 및 Keycloak 로그아웃 연계.
+6. **Refresh Token 정책:** 결정됨 — 무작위 값(해시 저장), 로그인 후 8시간 고정, Rotation, 재사용 탐지 시 세션 폐기, 퇴사 시 Keycloak 계정 비활성화와 Refresh Token 즉시 폐기 (`docs/architecture/04-tokens-and-jwt.md`).
 7. **세 Auth Service의 JWKS:** 실제 JWKS 엔드포인트 구현 여부, 공개키 로딩·캐싱·회전, Gateway/각 MSA의 허용 발급자 설정.
 8. **Resource Server Starter 필요성:** Claude Code가 작성한 서비스별 `SecurityFilterChain`, `JwtDecoder`, `dependencyInsight`를 근거로 판단. 이름만 보고 제거하지 않음.
 9. **Keycloak Realm JSON:** 최초 Import의 Client Secret, 역할, 관리용 서비스 계정 권한, 실제 Keycloak 버전 호환성 검증.

@@ -76,6 +76,31 @@ public class PmartTokenService {
                 .build();
     }
 
+    /**
+     * Refresh Token 쿠키 (D19). Path=/employee-auth 이므로 갱신·로그아웃 요청에만 실리고
+     * 업무 API 요청에는 실리지 않습니다. 수명은 로그인 시점 + 8시간까지 남은 시간.
+     */
+    public ResponseCookie refreshTokenCookie(RefreshTokenService.Issued refresh) {
+        long remaining = java.time.Duration.between(java.time.OffsetDateTime.now(), refresh.expiresAt()).toSeconds();
+        return ResponseCookie.from(props.jwt().refreshCookieName(), refresh.value())
+                .httpOnly(true)
+                .secure(props.secureCookie())
+                .sameSite("Lax")
+                .path("/employee-auth")
+                .maxAge(Math.max(remaining, 0))
+                .build();
+    }
+
+    public ResponseCookie expiredRefreshCookie() {
+        return ResponseCookie.from(props.jwt().refreshCookieName(), "")
+                .httpOnly(true)
+                .secure(props.secureCookie())
+                .sameSite("Lax")
+                .path("/employee-auth")
+                .maxAge(0)
+                .build();
+    }
+
     public record IssuedToken(String value, Instant expiresAt) {
     }
 }

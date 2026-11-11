@@ -9,7 +9,7 @@
 | 3 | Flutter 로그인 완료 | App Link/Universal Link 실제 도메인, ticket의 앱 바인딩·재사용 방지, PMart JWT 안전 저장 | [03](architecture/03-employee-login-flow.md) | 미결정 |
 | 4 | React SPA(인사팀 백오피스) 로그인 완료 | PMart JWT를 `Set-Cookie`로 전달(D15), CORS(D16)·CSRF 방어(D17)는 Gateway에서 적용 | [03](architecture/03-employee-login-flow.md) | 결정됨 |
 | 5 | 자체 JWT 형식 | RS256, 클레임, 수명 15분, 키 보관·회전 방식 확정 (D14) | [04](architecture/04-tokens-and-jwt.md) | 결정됨 |
-| 6 | Refresh Token 정책 | 저장소, Rotation, 재사용 탐지, 비활성화·퇴사 시 즉시 폐기, Keycloak 로그아웃 연계 | [04](architecture/04-tokens-and-jwt.md), [06](architecture/06-employee-provisioning.md) | 미결정 |
+| 6 | Refresh Token 정책 | 확정 (D19): 무작위 값·해시 저장, 8시간 고정, Rotation, 재사용 탐지 시 세션 폐기, 퇴사 시 즉시 폐기·Keycloak 계정 비활성화. Flutter용 전달 방식은 10단계에서 | [04](architecture/04-tokens-and-jwt.md) | 결정됨 |
 | 7 | 세 Auth Service의 JWKS | JWKS 엔드포인트 구현, 공개키 로딩·캐싱·회전, Gateway·MSA 허용 발급자 설정 | [04](architecture/04-tokens-and-jwt.md) | 미결정 |
 | 8 | Resource Server Starter 필요성 | 서비스별 `SecurityFilterChain`, `JwtDecoder`, `dependencyInsight`로 판단. 이름만 보고 제거하지 않음 | [04](architecture/04-tokens-and-jwt.md) | 검증 필요 |
 | 9 | Keycloak Realm JSON | 최초 Import의 Client Secret, 역할, 서비스 계정 권한, Keycloak 버전 호환성 | [keycloak-setup](infrastructure/keycloak-setup.md) | 검증 필요 |

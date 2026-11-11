@@ -71,6 +71,23 @@ public class KeycloakAdminClient {
                 .toBodilessEntity();
     }
 
+    /** 퇴사·비활성화: Keycloak 계정을 끄고(로그인 불가) SSO 세션을 모두 종료 */
+    public void disableAndLogout(String userId) {
+        String token = serviceAccountToken();
+        rest.put()
+                .uri(adminUrl("/users/" + userId))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("enabled", false))
+                .retrieve()
+                .toBodilessEntity();
+        rest.post()
+                .uri(adminUrl("/users/" + userId + "/logout"))
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     private Optional<String> findUserId(String token, String username) {
         List<Map<String, Object>> users = rest.get()
                 .uri(adminUrl("/users?exact=true&username={u}"), username)
