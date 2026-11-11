@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            # Keycloak (브라우저 요청 전용). Keycloak의 http-relative-path가 /iam이므로 경로를 그대로 전달
+            - id: keycloak
+              uri: http://keycloak:8080
+              predicates:
+                - Path=/iam/**
+            - id: employee-auth
+              uri: http://employee-auth:8080
+              predicates:
+                - Path=/employee-auth/**
+            - id: employee-service
+              uri: http://employee-service:8080
+              predicates:
+                - Path=/employee-service/**
+            - id: sample-api
+              uri: http://sample-api:8080
+              predicates:
+                - Path=/sample-api/**
+
+pmart:
+  backoffice-origin: ${BACKOFFICE_ORIGIN}
+  jwt:
+    issuer: ${PMART_JWT_ISSUER:https://employee-auth.pmart.test}
+    # JWKS는 내부 직접 호출 (Gateway 경유 안 함)
+    jwk-set-uri: http://employee-auth:8080/.well-known/jwks.json
+    cookie-name: PMART_EMP_AT
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

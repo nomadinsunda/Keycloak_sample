@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: employee-auth
+  datasource:
+    url: jdbc:postgresql://postgres:5432/employee_auth
+    username: employee_auth
+    password: ${EMPLOYEE_AUTH_DB_PASSWORD}
+
+pmart:
+  # 브라우저가 접속하는 Gateway 주소 (Keycloak 로그인 URL, Callback 주소의 기준)
+  public-base-url: ${PUBLIC_BASE_URL}
+  # 로그인 후 이동할 인사팀 백오피스 주소
+  backoffice-origin: ${BACKOFFICE_ORIGIN}
+  jwt:
+    issuer: ${PMART_JWT_ISSUER:https://employee-auth.pmart.test}
+    audiences: pmart-employee-auth,pmart-employee-service,pmart-sample-api
+    access-token-ttl: 15m
+    cookie-name: PMART_EMP_AT
+  login-transaction-ttl: 5m
+  keycloak:
+    # 서버 간 호출(토큰 교환, JWKS, Admin API)은 Gateway를 경유하지 않고 내부 주소로 직접 호출
+    internal-base-url: http://keycloak:8080/iam
+    realm: pmart-employees
+    client-id: pmart-employee-auth
+    client-secret: ${EMPLOYEE_AUTH_CLIENT_SECRET}
+    bootstrap-client-id: pmart-employee-auth-bootstrap
+    bootstrap-client-secret: ${EMPLOYEE_AUTH_BOOTSTRAP_CLIENT_SECRET}
+  employee-service:
+    base-url: http://employee-service:8080
+    internal-api-key: ${INTERNAL_API_KEY}
+  hr-test-account:
+    username: ${HR_TEST_USERNAME}
+    password: ${HR_TEST_PASSWORD}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

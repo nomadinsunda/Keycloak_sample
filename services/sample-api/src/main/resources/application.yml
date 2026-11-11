@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: sample-api
+
+pmart:
+  jwt:
+    issuer: ${PMART_JWT_ISSUER:https://employee-auth.pmart.test}
+    # JWKS는 내부 직접 호출 (Gateway 경유 안 함)
+    jwk-set-uri: http://employee-auth:8080/.well-known/jwks.json
+    audience: pmart-sample-api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -1,0 +1,32 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: employee-service
+  datasource:
+    url: jdbc:postgresql://postgres:5432/employee
+    username: employee
+    password: ${EMPLOYEE_DB_PASSWORD}
+
+pmart:
+  jwt:
+    # Employee Auth Service가 발급한 PMart JWT 검증 설정
+    issuer: ${PMART_JWT_ISSUER:https://employee-auth.pmart.test}
+    # JWKS는 내부 직접 호출 (Gateway 경유 안 함)
+    jwk-set-uri: http://employee-auth:8080/.well-known/jwks.json
+    audience: pmart-employee-service
+  keycloak:
+    # Keycloak 호출은 Gateway를 경유하지 않고 내부 네트워크에서 직접 호출
+    base-url: http://keycloak:8080/iam
+    realm: pmart-employees
+    client-id: pmart-employee-service
+    client-secret: ${EMPLOYEE_SERVICE_CLIENT_SECRET}
+  internal:
+    api-key: ${INTERNAL_API_KEY}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -1,0 +1,5 @@
+/* Tailwind CSS v4 + daisyUI v5: CSS 안에서 설정 */
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: corporate --default;
+}
