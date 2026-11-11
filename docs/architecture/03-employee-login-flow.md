@@ -145,8 +145,8 @@ Set-Cookie: PMART_EMP_AT=<PMart JWT>; HttpOnly; SameSite=Lax; Path=/; Max-Age=90
 ```text
 1. 앱: app_verifier(무작위 32바이트) 생성, app_challenge = BASE64URL(SHA256(app_verifier))
 2. 앱 → 시스템 브라우저: GET /employee-auth/oauth2/start?client=mobile&app_challenge=...
-   Employee Auth: 로그인 트랜잭션에 client=mobile, app_challenge 저장 → Keycloak으로 이동 (prompt=login)
-3. Keycloak 로그인 → Callback (백오피스와 같은 Code 교환·ID Token 검증·직원 확인)
+   Employee Auth: 로그인 트랜잭션에 client=mobile, app_challenge 저장 → Keycloak으로 이동
+3. Keycloak 로그인 → Callback (백오피스와 같은 Code 교환·ID Token 검증·직원 확인) → Keycloak 세션 종료
 4. Employee Auth: 일회성 ticket 생성(해시 저장, 60초) → 302 pmart-employee://login-callback?ticket=...
    (토큰·쿠키는 내려주지 않음)
 5. 앱 → POST /employee-auth/mobile/token {ticket, appVerifier}
@@ -163,7 +163,7 @@ Set-Cookie: PMART_EMP_AT=<PMart JWT>; HttpOnly; SameSite=Lax; Path=/; Max-Age=90
 | 토큰 API | `/employee-auth/mobile/**`: JSON 본문으로만 자격 증명을 받고 쿠키를 쓰지 않으므로 Gateway CSRF 검사 제외 |
 | Refresh Token | 백오피스와 같은 정책(D19). 앱에는 JSON으로 전달 |
 | 토큰 보관 | `flutter_secure_storage` (Android Keystore / iOS Keychain) |
-| 로그인 화면 | `prompt=login`: 앱 로그아웃은 Keycloak SSO 세션을 끝내지 않으므로 매번 비밀번호를 다시 받음 |
+| Keycloak 세션 | 앱 로그인 직후 Employee Auth Service가 Keycloak 세션을 종료(서버 간 logout 호출). 앱 로그인 상태는 PMart Refresh Token으로 유지. `prompt=login`은 쓰지 않음(이전 계정으로 아이디 칸이 고정되는 문제가 있었음) |
 | 기기 → Gateway | 실기기·에뮬레이터 모두 `adb reverse tcp:8080 tcp:8080` 후 `http://localhost:8080`. Android는 `localhost`·`10.0.2.2`에만 평문 HTTP 허용(`network_security_config.xml`) |
 
 ### 일회성 ticket 요구사항

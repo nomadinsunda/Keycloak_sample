@@ -169,12 +169,20 @@ Keycloak을 사용하는 목적은 **직원 IAM 계정 발급**이다. 이전 �
 - 교훈: 설계에 없는 입력 규칙을 임의로 정하지 말 것. 검증 실패는 항상 사용자에게 이유를 보여줄 것
 - 함정: Git Bash에서 `docker compose exec keycloak /opt/keycloak/bin/kcadm.sh`를 실행하면 경로가 Windows 경로로 바뀌어 실패함. `MSYS_NO_PATHCONV=1` 필요
 
-### 해결하지 못한 문제: 앱 연속 로그인 간헐 실패
+### 앱 로그인 아이디 칸 입력 불가 (사용자 보고)
 
-- 증상: 검증 스크립트 약 11회 실행 중 2회, 12단계(앱)에서 **같은 브라우저 세션으로 약 1초 간격의 두 번째 앱 로그인(`prompt=login`)** 후 Keycloak이 Callback으로 리다이렉트하지 않음. 이후 항목이 연쇄 실패
-- 확인한 것: Keycloak 로그에 해당 로그인 오류 이벤트 없음, Employee Auth Service에는 요청이 도달하지 않음, 바로 뒤의 세 번째 앱 로그인은 성공, 같은 동작을 12회 반복한 별도 재현 시도와 5회 연속 전체 실행에서는 재현 안 됨
-- 원인: **미확인**. 실패 시 Keycloak 응답 화면을 저장하는 장치를 넣었으나 그 뒤로 재현되지 않아 화면을 확보하지 못함
-- 영향 판단: 사람이 1초 안에 두 번 로그인하는 상황은 드물지만, 원인을 모르는 상태이므로 운영 적용 전에 Keycloak 이벤트 로그(`LOGIN`·`CODE_TO_TOKEN` 등)를 켜고 다시 확인해야 함
+- 증상: Flutter 앱에서 다시 로그인할 때 Keycloak 화면의 Username 칸에 입력이 안 됨
+- 원인: 앱 로그인에 `prompt=login`을 썼음. 휴대폰 브라우저에 이전 Keycloak 세션이 남아 있으면 Keycloak은 "Please re-authenticate" 화면을 띄우고 **아이디를 이전 계정으로 고정한 채 비밀번호만 받음**. 다른 IAM 계정으로는 로그인할 수 없었음 (아이디 옆 ↻ 아이콘으로만 바꿀 수 있음)
+- 수정: `prompt=login` 제거. 앱 로그인 Callback에서 Code 교환 직후 Employee Auth Service가 Keycloak logout 엔드포인트를 서버 간 호출로 불러 **Keycloak 세션을 종료**. 앱은 PMart Refresh Token으로 로그인을 유지하므로 Keycloak 세션이 필요 없음
+- 검증: 앱 로그인 후 같은 브라우저 쿠키로 다시 로그인 화면을 열면 아이디 칸이 비어 있고 "re-authenticate"가 없음을 스크립트로 확인
+- 교훈: 에뮬레이터 확인 때 "Please re-authenticate"와 아이디 고정을 보고 `prompt=login`이 동작한다고만 판단했고, 다른 계정으로 로그인하는 경우를 확인하지 않았음
+
+### 해결: 앱 연속 로그인 간헐 실패 → 테스트 스크립트 버그
+
+- 앞서 "원인 미확인"으로 기록했던 간헐 실패의 원인은 **테스트 스크립트**였음
+- 스크립트가 무작위로 만든 `app_verifier`가 `-`로 시작하면 `node -e ... "$verifier"`에서 node가 이를 **명령 옵션으로 해석**(`bad option: -3w9...`)해 `app_challenge` 계산에 실패 → 로그인 시작 400 → 이후 항목 연쇄 실패. Base64URL 64개 문자 중 하나가 `-`라 확률적으로 발생
+- 수정: `node -e ... -- "$verifier"`. `-`로 시작하는 verifier를 강제로 쓰게 한 실행과 일반 실행 3회 모두 73개 통과
+- 서버·Keycloak 문제가 아니었음. "Keycloak 이벤트 로그를 켜고 다시 확인해야 함"이라는 이전 기록은 취소
 
 ### 남은 단계
 

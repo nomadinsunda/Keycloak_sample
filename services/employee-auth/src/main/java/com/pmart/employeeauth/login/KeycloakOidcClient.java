@@ -65,12 +65,9 @@ public class KeycloakOidcClient {
     }
 
     public String authorizationUrl(LoginTransactionRepository.LoginTransaction tx) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(props.keycloakIssuer() + "/protocol/openid-connect/auth");
-        if (tx.client() == LoginTransactionRepository.Client.MOBILE) {
-            // 앱 로그아웃은 Keycloak SSO 세션을 끝내지 않으므로, 앱 로그인은 매번 비밀번호를 다시 받음
-            builder.queryParam("prompt", "login");
-        }
-        return builder
+        // 앱 로그인에 prompt=login을 쓰지 않음: 남아 있던 Keycloak 세션의 계정으로 아이디 칸이 고정되어
+        // 다른 계정으로 로그인할 수 없었음. 대신 앱 로그인 직후 Keycloak 세션을 종료함 (exchangeAndVerify)
+        return UriComponentsBuilder.fromUriString(props.keycloakIssuer() + "/protocol/openid-connect/auth")
                 .queryParam("response_type", "code")
                 .queryParam("client_id", props.keycloak().clientId())
                 .queryParam("redirect_uri", props.callbackUrl())
@@ -104,7 +101,35 @@ public class KeycloakOidcClient {
         if (!tx.nonce().equals(idToken.getClaimAsString("nonce"))) {
             throw new IllegalStateException("ID Token nonce 불일치");
         }
+        if (tx.client() == LoginTransactionRepository.Client.MOBILE) {
+            endKeycloakSession((String) response.get("refresh_token"));
+        }
         return idToken;
+    }
+
+    /**
+     * Flutter 앱 로그인 직후 Keycloak 세션 종료 (D20 수정).
+     * 앱은 PMart Refresh Token으로 로그인을 유지하므로 Keycloak SSO 세션이 필요 없음.
+     * 세션이 남아 있으면 다음 로그인 때 Keycloak이 이전 계정으로 아이디를 고정해 다른 계정으로 로그인할 수 없음.
+     * 서버 간 호출(Gateway 경유 안 함). 실패해도 로그인 자체는 계속 진행.
+     */
+    private void endKeycloakSession(String keycloakRefreshToken) {
+        if (keycloakRefreshToken == null) {
+            return;
+        }
+        try {
+            var form = new LinkedMultiValueMap<String, String>();
+            form.add("refresh_token", keycloakRefreshToken);
+            rest.post()
+                    .uri(props.keycloakInternalRealmUrl() + "/protocol/openid-connect/logout")
+                    .headers(h -> h.setBasicAuth(props.keycloak().clientId(), props.keycloak().clientSecret()))
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RuntimeException e) {
+            org.slf4j.LoggerFactory.getLogger(KeycloakOidcClient.class).warn("앱 로그인 후 Keycloak 세션 종료 실패", e);
+        }
     }
 
     /** Keycloak SSO 세션 로그아웃 주소 (브라우저가 이동) */

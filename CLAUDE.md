@@ -124,7 +124,7 @@
 - 커스텀 스킴은 다른 앱이 가로챌 수 있으므로, 일회성 ticket은 앱이 만든 `app_verifier`(S256)에 결속합니다. ticket은 60초·단일 사용이며, 교환 실패 시에도 폐기됩니다.
 - 토큰 교환·갱신·로그아웃은 `/employee-auth/mobile/**`에서 JSON 본문으로 합니다. 쿠키를 쓰지 않으므로 Gateway CSRF 검사에서 제외합니다.
 - 토큰은 기기 보안 저장소(`flutter_secure_storage`)에 보관하고 `Authorization: Bearer`로 보냅니다.
-- 앱 로그아웃은 Keycloak SSO 세션을 끝내지 않으므로 앱 로그인은 `prompt=login`으로 매번 비밀번호를 받습니다.
+- 앱 로그인이 끝나면 Employee Auth Service가 **Keycloak 세션을 바로 종료**합니다(서버 간 호출). 앱은 PMart Refresh Token으로 로그인을 유지하므로 Keycloak 세션이 필요 없고, 세션이 남으면 다음 로그인 때 아이디 칸이 이전 계정으로 고정되기 때문입니다. `prompt=login`은 쓰지 않습니다.
 
 ## 테스트용 인사팀 백오피스 계정: Employee Auth Service가 부팅 시 생성 — 확정
 

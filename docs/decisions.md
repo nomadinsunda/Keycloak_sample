@@ -25,7 +25,7 @@
 | D17 | **CSRF 방어는 Gateway에서** Double Submit Cookie 방식으로 적용. `GET /csrf`로 토큰 발급, `X-XSRF-TOKEN` 헤더 검사. 쿠키 인증 상태 변경 요청만 대상, Bearer 헤더 요청·`/iam/**`·Callback 제외 | 확정 |
 | D18 | 구현 시 결정(2026-11-11): 부트스트랩 Client `pmart-employee-auth-bootstrap`, Employee Service 내부 API + 내부 API 키, 역할은 Employee Service DB에 저장, PMart JWT `aud`에 `pmart-employee-auth` 추가. 상세는 [verification-log.md](verification-log.md) | 확정 |
 | D19 | Refresh Token: 무작위 값(SHA-256 해시 저장), 로그인 후 8시간 고정, Rotation, 재사용 탐지 시 family 폐기, `PMART_EMP_RT` 쿠키(`Path=/employee-auth`), 갱신 시 재직 상태 재확인. 퇴사 시 직원 DB INACTIVE + Keycloak 계정 비활성화·세션 종료 + Refresh Token 전부 폐기 | 확정 |
-| D20 | Flutter 앱: 시스템 브라우저(Custom Tabs) 로그인, **커스텀 스킴 `pmart-employee://login-callback`**으로 복귀(LAN 환경이라 App Link 대신), 일회성 ticket(60초, 단일 사용, 해시 저장)을 앱의 `app_verifier`(S256)에 결속, 토큰은 `/employee-auth/mobile/**`에서 JSON으로 교환·갱신(쿠키·CSRF 없음), 기기 보안 저장소 보관, 앱 로그인은 `prompt=login` | 확정 |
+| D20 | Flutter 앱: 시스템 브라우저(Custom Tabs) 로그인, **커스텀 스킴 `pmart-employee://login-callback`**으로 복귀(LAN 환경이라 App Link 대신), 일회성 ticket(60초, 단일 사용, 해시 저장)을 앱의 `app_verifier`(S256)에 결속, 토큰은 `/employee-auth/mobile/**`에서 JSON으로 교환·갱신(쿠키·CSRF 없음), 기기 보안 저장소 보관, 앱 로그인 직후 Keycloak 세션 종료(2026-11-11 수정: 처음엔 `prompt=login`이었으나 아이디 칸이 이전 계정으로 고정되는 문제로 변경) | 확정 |
 | D21 | **Keycloak은 직원 IAM 계정을 발급**한다. IAM 계정 ID = `계정명@pmart.test`(인사팀이 계정명 입력, 형식·중복 검사) = Keycloak 로그인 ID(username) = Keycloak 이메일. **사번은 인사 정보로만 사용**(직원 DB, PMart JWT `sub`). 직원 로그인은 IAM 계정 ID + 비밀번호. 도메인은 `IAM_DOMAIN` 환경변수 | 확정 |
 
 ## 채택하지 않은 대안

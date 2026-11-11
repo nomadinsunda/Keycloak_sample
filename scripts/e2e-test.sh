@@ -47,7 +47,8 @@ browser_login() {
 # $1=app_verifier. Callback 응답 헤더는 $WORK/mobile_callback.h
 mobile_login() {
   local verifier="$1" challenge
-  challenge=$(node -e 'console.log(require("crypto").createHash("sha256").update(process.argv[1]).digest("base64url"))' "$verifier")
+  # `--` 필수: verifier가 `-`로 시작하면 node가 옵션으로 해석해 실패함 (간헐 실패의 원인이었음)
+  challenge=$(node -e 'console.log(require("crypto").createHash("sha256").update(process.argv[1]).digest("base64url"))' -- "$verifier")
   browser_login "$WORK/m.jar" "$HR_TEST_IAM_ID" "$HR_TEST_PASSWORD" "" \
     "$GW/employee-auth/oauth2/start?client=mobile&app_challenge=$challenge" > /dev/null
   cp "$WORK/callback.h" "$WORK/mobile_callback.h"   # browser_login이 받은 Callback 응답 (state는 한 번만 사용 가능)
@@ -173,7 +174,10 @@ echo "== 12. Flutter 앱 로그인 (커스텀 스킴 + 앱에 결속된 일회�
 check "app_challenge 없이 앱 로그인 시작" 400 "$(status "$GW/employee-auth/oauth2/start?client=mobile")"
 V1=$(rand)
 back=$(mobile_login "$V1")
-grep -q "prompt=login" "$WORK/auth_url" && ok "앱 로그인은 매번 비밀번호 입력 (prompt=login)" || fail "prompt=login 없음"
+# 앱 로그인 직후 Keycloak 세션을 종료하므로, 같은 브라우저로 다시 로그인하면 아이디 칸이 비어 있어야 함
+NEXT_AUTH=$(location -c "$WORK/m.jar" -b "$WORK/m.jar" "$GW/employee-auth/oauth2/start?client=mobile&app_challenge=$(node -e "console.log(require('crypto').createHash('sha256').update('x').digest('base64url'))")")
+curl -s -c "$WORK/m.jar" -b "$WORK/m.jar" "$NEXT_AUTH" > "$WORK/next.html"
+if grep -q "re-authenticate" "$WORK/next.html" || grep -qE "name=\"username\"[^>]*value=\"[^\"]+\"" "$WORK/next.html"; then fail "앱 재로그인 시 아이디 칸이 이전 계정으로 고정됨"; else ok "앱 로그인 후 Keycloak 세션 종료 → 다음 로그인 때 아이디 입력 가능"; fi
 [[ "$back" == pmart-employee://login-callback?ticket=* ]] && ok "커스텀 스킴으로 ticket 전달" || fail "앱 복귀 주소 오류: $back"
 grep -qi "set-cookie: PMART_EMP" "$WORK/mobile_callback.h" && fail "앱 Callback에 토큰 쿠키가 실림" || ok "앱 Callback에는 토큰 없음 (ticket만)"
 grep -qiE "location:.*(accessToken|eyJ)" "$WORK/mobile_callback.h" && fail "URL에 토큰이 실림" || ok "앱 복귀 URL에 토큰 없음"
