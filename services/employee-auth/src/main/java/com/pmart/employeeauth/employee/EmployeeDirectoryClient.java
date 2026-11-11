@@ -37,19 +37,19 @@ public class EmployeeDirectoryClient {
         }
     }
 
-    public void upsert(String employeeNo, String firstName, String lastName, String email, String department,
+    public void upsert(String employeeNo, String iamId, String firstName, String lastName, String department,
                        List<String> roles, String keycloakUserId) {
         rest.put()
                 .uri("/internal/employees/{no}", employeeNo)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of(
-                        "firstName", firstName, "lastName", lastName, "email", email, "department", department,
+                        "iamId", iamId, "firstName", firstName, "lastName", lastName, "department", department,
                         "status", "ACTIVE", "roles", roles, "keycloakUserId", keycloakUserId))
                 .retrieve()
                 .toBodilessEntity();
     }
 
-    public record EmployeeStatus(String employeeNo, String firstName, String lastName, String status,
+    public record EmployeeStatus(String employeeNo, String iamId, String firstName, String lastName, String status,
                                  List<String> roles) {
         public boolean active() {
             return "ACTIVE".equals(status);

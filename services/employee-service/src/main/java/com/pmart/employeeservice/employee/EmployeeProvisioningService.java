@@ -23,9 +23,12 @@ public class EmployeeProvisioningService {
     private final EmployeeRepository repository;
     private final KeycloakAdminClient keycloak;
     private final EmployeeAuthSessionClient sessions;
+    private final String iamDomain;
 
     public EmployeeProvisioningService(EmployeeRepository repository, KeycloakAdminClient keycloak,
-                                       EmployeeAuthSessionClient sessions) {
+                                       EmployeeAuthSessionClient sessions,
+                                       com.pmart.employeeservice.config.PmartProperties props) {
+        this.iamDomain = props.iam().domain();
         this.repository = repository;
         this.keycloak = keycloak;
         this.sessions = sessions;
@@ -38,17 +41,32 @@ public class EmployeeProvisioningService {
             }
         });
 
-        String email = req.employeeNo().toLowerCase(Locale.ROOT) + "@pmart.test";
+        // IAM 계정 ID = 인사팀이 정한 계정명 + @도메인. Keycloak 로그인 ID이자 이메일 (D21)
+        String iamId = req.iamAccount().toLowerCase(Locale.ROOT) + "@" + iamDomain;
+        repository.findByIamId(iamId).ifPresent(other -> {
+            if (!other.employeeNo().equals(req.employeeNo())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 사용 중인 IAM 계정입니다: " + iamId);
+            }
+        });
         String roles = req.hrAdmin() ? "EMPLOYEE,HR_ADMIN" : "EMPLOYEE";
-        repository.upsertPending(req.employeeNo(), req.firstName(), req.lastName(), email,
+        repository.upsertPending(req.employeeNo(), iamId, req.firstName(), req.lastName(),
                 req.department(), "ACTIVE", roles);
 
         try {
-            String keycloakUserId = keycloak.ensureUser(req.employeeNo(), req.firstName(), req.lastName(), email);
+            String keycloakUserId = keycloak.ensureUser(iamId, req.firstName(), req.lastName(), iamId);
+            // Keycloak에 같은 IAM 계정이 이미 있는데 다른 직원에게 연결돼 있으면 거부 (재시도로 이어 만드는 경우만 허용)
+            repository.findByKeycloakUserId(keycloakUserId).ifPresent(other -> {
+                if (!other.employeeNo().equals(req.employeeNo())) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 사용 중인 IAM 계정입니다: " + iamId);
+                }
+            });
             // 인사팀이 정한 초기 비밀번호. 첫 로그인 때 직원이 직접 바꾸도록 temporary=true
             keycloak.setPassword(keycloakUserId, req.initialPassword(), true);
             repository.markCompleted(req.employeeNo(), keycloakUserId);
-            log.info("직원 계정 발급 완료: {} (keycloak={})", req.employeeNo(), keycloakUserId);
+            log.info("IAM 계정 발급 완료: {} → {} (keycloak={})", req.employeeNo(), iamId, keycloakUserId);
+        } catch (ResponseStatusException e) {
+            repository.markFailed(req.employeeNo(), e.getReason());
+            throw e;
         } catch (RuntimeException e) {
             repository.markFailed(req.employeeNo(), e.getMessage());
             log.warn("직원 계정 발급 실패: {}", req.employeeNo(), e);

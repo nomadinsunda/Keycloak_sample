@@ -72,7 +72,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/employee-auth/oauth2/start", "/employee-auth/callback",
-                                "/employee-auth/refresh", "/employee-auth/logout",
+                                "/employee-auth/refresh", "/employee-auth/logout", "/employee-auth/mobile/**",
                                 "/.well-known/jwks.json", "/actuator/health", "/error").permitAll()
                         .requestMatchers("/employee-auth/**").authenticated()
                         .anyRequest().denyAll())

@@ -65,6 +65,7 @@ services:
       EMPLOYEE_DB_PASSWORD: ${EMPLOYEE_DB_PASSWORD}
       EMPLOYEE_SERVICE_CLIENT_SECRET: ${EMPLOYEE_SERVICE_CLIENT_SECRET}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      IAM_DOMAIN: ${IAM_DOMAIN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,7 +87,8 @@ services:
       EMPLOYEE_AUTH_CLIENT_SECRET: ${EMPLOYEE_AUTH_CLIENT_SECRET}
       EMPLOYEE_AUTH_BOOTSTRAP_CLIENT_SECRET: ${EMPLOYEE_AUTH_BOOTSTRAP_CLIENT_SECRET}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      HR_TEST_USERNAME: ${HR_TEST_USERNAME}
+      HR_TEST_EMPLOYEE_NO: ${HR_TEST_EMPLOYEE_NO}
+      HR_TEST_IAM_ID: ${HR_TEST_IAM_ID}
       HR_TEST_PASSWORD: ${HR_TEST_PASSWORD}
     depends_on:
       postgres:
@@ -131,6 +133,7 @@ services:
       context: ./apps/hr-backoffice
       args:
         VITE_GATEWAY_URL: ${PUBLIC_BASE_URL}
+        VITE_IAM_DOMAIN: ${IAM_DOMAIN}
     ports:
       - "3000:80"
     depends_on:

@@ -5,9 +5,10 @@
 - Realm 이름: `pmart-employees`
 - `master` Realm은 Keycloak 관리용으로만 유지하고, 직원 계정은 업무 Realm에 등록합니다.
 - 고객·라이더 Realm은 만들지 않습니다.
-- 사용자명(username)은 사번을 사용합니다. 예: `EMP000123`
+- Keycloak은 직원 **IAM 계정**을 발급합니다 (D21). 사용자명(username) = **IAM 계정 ID** `계정명@pmart.test` = Keycloak 이메일. 예: `gildong.hong@pmart.test`
+- 사번(예: `EMP000123`)은 인사 정보로만 쓰며 Keycloak 로그인 ID로 쓰지 않습니다.
 - Keycloak `sub`(사용자 UUID)를 **안정적인 외부 식별자**로 저장하고 PMart 사번과 매핑합니다.
-- 이메일 주소는 필수가 아닙니다. LAN 메일함을 운영하면 이메일 필드를 사용합니다.
+- 이메일은 IAM 계정 ID와 같은 값으로 항상 채웁니다. 11단계 LAN 메일함을 운영하면 이 주소가 실제 메일함 주소가 됩니다.
 
 ## Client — 권장
 

@@ -57,18 +57,19 @@ public class HrTestAccountBootstrap implements ApplicationRunner {
     }
 
     private void ensureAccount() {
-        String username = props.hrTestAccount().username();
-        String email = username.toLowerCase(Locale.ROOT) + "@pmart.test";
+        String employeeNo = props.hrTestAccount().employeeNo();
+        // IAM 계정 ID = Keycloak 로그인 ID이자 이메일 (D21). Keycloak은 username을 소문자로 저장
+        String iamId = props.hrTestAccount().iamId().toLowerCase(Locale.ROOT);
         String token = bootstrapToken();
 
-        String userId = findUserId(token, username);
+        String userId = findUserId(token, iamId);
         if (userId == null) {
             URI location = rest.post()
                     .uri(adminUrl("/users"))
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of("username", username, "firstName", "인사", "lastName", "테스트",
-                            "email", email, "emailVerified", true, "enabled", true))
+                    .body(Map.of("username", iamId, "firstName", "인사", "lastName", "테스트",
+                            "email", iamId, "emailVerified", true, "enabled", true))
                     .retrieve().toBodilessEntity().getHeaders().getLocation();
             String path = location.getPath();
             userId = path.substring(path.lastIndexOf('/') + 1);
@@ -79,13 +80,28 @@ public class HrTestAccountBootstrap implements ApplicationRunner {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of("type", "password", "value", props.hrTestAccount().password(), "temporary", false))
                     .retrieve().toBodilessEntity();
-            log.info("테스트용 인사팀 Keycloak 계정 생성: {}", username);
+            log.info("테스트용 인사팀 IAM 계정 생성: {}", iamId);
+            disableLegacyAccount(token, employeeNo, userId);
         } else {
-            log.info("테스트용 인사팀 Keycloak 계정이 이미 있습니다: {}", username);
+            log.info("테스트용 인사팀 IAM 계정이 이미 있습니다: {}", iamId);
         }
 
-        employees.upsert(username, "인사", "테스트", email, "인사팀", List.of("EMPLOYEE", "HR_ADMIN"), userId);
-        log.info("테스트용 인사팀 계정 준비 완료: {} (HR_ADMIN)", username);
+        employees.upsert(employeeNo, iamId, "인사", "테스트", "인사팀", List.of("EMPLOYEE", "HR_ADMIN"), userId);
+        log.info("테스트용 인사팀 계정 준비 완료: {} → {} (HR_ADMIN)", employeeNo, iamId);
+    }
+
+    /** 사번을 로그인 ID로 쓰던 이전 방식의 계정이 남아 있으면 비활성화 (D21 이전 데이터 정리) */
+    private void disableLegacyAccount(String token, String employeeNo, String newUserId) {
+        String legacyId = findUserId(token, employeeNo.toLowerCase(Locale.ROOT));
+        if (legacyId != null && !legacyId.equals(newUserId)) {
+            rest.put()
+                    .uri(adminUrl("/users/" + legacyId))
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("enabled", false))
+                    .retrieve().toBodilessEntity();
+            log.info("이전 방식(사번 로그인) 계정 비활성화: {}", employeeNo);
+        }
     }
 
     private String findUserId(String token, String username) {

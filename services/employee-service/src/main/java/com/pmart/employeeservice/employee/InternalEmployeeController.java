@@ -32,7 +32,7 @@ public class InternalEmployeeController {
     @GetMapping("/by-keycloak-id/{keycloakUserId}")
     public ResponseEntity<EmployeeStatus> byKeycloakId(@PathVariable String keycloakUserId) {
         return repository.findByKeycloakUserId(keycloakUserId)
-                .map(e -> ResponseEntity.ok(new EmployeeStatus(e.employeeNo(), e.firstName(), e.lastName(),
+                .map(e -> ResponseEntity.ok(new EmployeeStatus(e.employeeNo(), e.iamId(), e.firstName(), e.lastName(),
                         e.status(), e.roleList())))
                 .orElse(ResponseEntity.notFound().build());
     }
@@ -40,17 +40,17 @@ public class InternalEmployeeController {
     /** 부팅 시 Employee Auth Service가 테스트용 인사팀 계정의 직원 정보를 등록 */
     @PutMapping("/{employeeNo}")
     public EmployeeStatus upsert(@PathVariable String employeeNo, @Valid @RequestBody UpsertRequest req) {
-        repository.upsertPending(employeeNo, req.firstName(), req.lastName(), req.email(), req.department(),
+        repository.upsertPending(employeeNo, req.iamId(), req.firstName(), req.lastName(), req.department(),
                 req.status(), String.join(",", req.roles()));
         repository.markCompleted(employeeNo, req.keycloakUserId());
-        return new EmployeeStatus(employeeNo, req.firstName(), req.lastName(), req.status(), req.roles());
+        return new EmployeeStatus(employeeNo, req.iamId(), req.firstName(), req.lastName(), req.status(), req.roles());
     }
 
-    public record EmployeeStatus(String employeeNo, String firstName, String lastName, String status,
+    public record EmployeeStatus(String employeeNo, String iamId, String firstName, String lastName, String status,
                                  List<String> roles) {
     }
 
-    public record UpsertRequest(@NotBlank String firstName, @NotBlank String lastName, @NotBlank String email,
+    public record UpsertRequest(@NotBlank String iamId, @NotBlank String firstName, @NotBlank String lastName,
                                 String department, @NotBlank String status, @NotEmpty List<String> roles,
                                 @NotBlank String keycloakUserId) {
     }

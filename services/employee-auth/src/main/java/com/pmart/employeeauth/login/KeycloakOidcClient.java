@@ -65,7 +65,12 @@ public class KeycloakOidcClient {
     }
 
     public String authorizationUrl(LoginTransactionRepository.LoginTransaction tx) {
-        return UriComponentsBuilder.fromUriString(props.keycloakIssuer() + "/protocol/openid-connect/auth")
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(props.keycloakIssuer() + "/protocol/openid-connect/auth");
+        if (tx.client() == LoginTransactionRepository.Client.MOBILE) {
+            // 앱 로그아웃은 Keycloak SSO 세션을 끝내지 않으므로, 앱 로그인은 매번 비밀번호를 다시 받음
+            builder.queryParam("prompt", "login");
+        }
+        return builder
                 .queryParam("response_type", "code")
                 .queryParam("client_id", props.keycloak().clientId())
                 .queryParam("redirect_uri", props.callbackUrl())

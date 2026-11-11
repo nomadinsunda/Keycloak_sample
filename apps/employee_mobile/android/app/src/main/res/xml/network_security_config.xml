@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- LAN 테스트용: Gateway가 HTTP라서 localhost(adb reverse)와 에뮬레이터 호스트 주소에만 평문 HTTP 허용.
+     그 외 주소는 Android 기본값대로 HTTPS만 허용 -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

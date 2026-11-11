@@ -57,19 +57,27 @@ public class EmployeeController {
     }
 
     public record RegisterEmployeeRequest(
-            @NotBlank @Pattern(regexp = "^[A-Z]{2,3}\\d{6}$", message = "사번 형식: 예) EMP000123") String employeeNo,
-            @NotBlank @Size(max = 50) String firstName,
-            @NotBlank @Size(max = 50) String lastName,
-            @Size(max = 100) String department,
-            @NotBlank @Size(min = 8, max = 64) String initialPassword,
+            // 사번은 인사 정보 (D21). 영문 대문자·숫자 3~20자
+            @NotBlank(message = "사번을 입력하세요.")
+            @Pattern(regexp = "^[A-Z0-9]{3,20}$", message = "사번은 영문 대문자·숫자 3~20자로 입력하세요. (예: EMP0003)") String employeeNo,
+            // IAM 계정명 (D21). IAM 계정 ID = 계정명@도메인 (예: gildong.hong@pmart.test)
+            @NotBlank(message = "IAM 계정명을 입력하세요.")
+            @Size(min = 3, max = 30, message = "IAM 계정명은 3~30자로 입력하세요.")
+            @Pattern(regexp = "^[a-z0-9]+([._-][a-z0-9]+)*$",
+                    message = "IAM 계정명은 영문 소문자·숫자와 . _ - 만 사용하세요. (예: gildong.hong)") String iamAccount,
+            @NotBlank(message = "이름을 입력하세요.") @Size(max = 50, message = "이름은 50자 이하로 입력하세요.") String firstName,
+            @NotBlank(message = "성을 입력하세요.") @Size(max = 50, message = "성은 50자 이하로 입력하세요.") String lastName,
+            @Size(max = 100, message = "부서는 100자 이하로 입력하세요.") String department,
+            @NotBlank(message = "초기 비밀번호를 입력하세요.")
+            @Size(min = 8, max = 64, message = "초기 비밀번호는 8~64자로 입력하세요.") String initialPassword,
             boolean hrAdmin) {
     }
 
-    public record EmployeeResponse(String employeeNo, String firstName, String lastName, String email,
+    public record EmployeeResponse(String employeeNo, String iamId, String firstName, String lastName, String email,
                                    String department, String status, List<String> roles,
                                    String provisioningStatus, String provisioningError) {
         static EmployeeResponse from(Employee e) {
-            return new EmployeeResponse(e.employeeNo(), e.firstName(), e.lastName(), e.email(), e.department(),
+            return new EmployeeResponse(e.employeeNo(), e.iamId(), e.firstName(), e.lastName(), e.email(), e.department(),
                     e.status(), e.roleList(), e.provisioningStatus(), e.provisioningError());
         }
     }

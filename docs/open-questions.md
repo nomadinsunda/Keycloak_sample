@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | 1 | Gateway ↔ Keycloak 경로 설정 | Keycloak을 Gateway 뒷단에 두는 것은 확정(D7). 남은 것: Keycloak `hostname`·relative path·프록시 헤더 설정, Admin API·관리 콘솔 비공개 처리 | [05](architecture/05-gateway-routing.md) | 검증 필요 |
 | 2 | Employee Auth 로그인 API | 인증 시작 URL 반환 방식, Callback 경로, 만료 시간·재시도 처리. (`state`·`nonce`·PKCE 저장소는 PostgreSQL로 확정, D13) | [03](architecture/03-employee-login-flow.md) | 미결정 |
-| 3 | Flutter 로그인 완료 | App Link/Universal Link 실제 도메인, ticket의 앱 바인딩·재사용 방지, PMart JWT 안전 저장 | [03](architecture/03-employee-login-flow.md) | 미결정 |
+| 3 | Flutter 로그인 완료 | 확정 (D20): LAN 테스트 환경이라 App Link 대신 커스텀 스킴, ticket은 app_verifier에 결속·60초·단일 사용, 토큰은 보안 저장소. **실제 App Link/Universal Link(HTTPS 도메인 필요)는 운영 환경에서 별도 검증 필요** | [03](architecture/03-employee-login-flow.md) | 결정됨 |
 | 4 | React SPA(인사팀 백오피스) 로그인 완료 | PMart JWT를 `Set-Cookie`로 전달(D15), CORS(D16)·CSRF 방어(D17)는 Gateway에서 적용 | [03](architecture/03-employee-login-flow.md) | 결정됨 |
 | 5 | 자체 JWT 형식 | RS256, 클레임, 수명 15분, 키 보관·회전 방식 확정 (D14) | [04](architecture/04-tokens-and-jwt.md) | 결정됨 |
 | 6 | Refresh Token 정책 | 확정 (D19): 무작위 값·해시 저장, 8시간 고정, Rotation, 재사용 탐지 시 세션 폐기, 퇴사 시 즉시 폐기·Keycloak 계정 비활성화. Flutter용 전달 방식은 10단계에서 | [04](architecture/04-tokens-and-jwt.md) | 결정됨 |

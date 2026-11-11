@@ -140,6 +140,32 @@ Set-Cookie: PMART_EMP_AT=<PMart JWT>; HttpOnly; SameSite=Lax; Path=/; Max-Age=90
 - 쿠키 인증은 브라우저가 자동으로 쿠키를 보내므로 **CSRF 방어를 Gateway에서 적용**합니다. SPA는 `GET /csrf`로 토큰을 받아 상태를 바꾸는 요청에 `X-XSRF-TOKEN` 헤더로 보냅니다. 상세 내용은 [05 Gateway 라우팅](05-gateway-routing.md#csrf-방어--확정-d17)을 참고하세요.
 - Refresh Token을 어떻게 다룰지는 [미결정 #6](../open-questions.md)에서 정합니다.
 
+### Flutter 앱: 커스텀 스킴 + 일회성 ticket — 확정 (D20)
+
+```text
+1. 앱: app_verifier(무작위 32바이트) 생성, app_challenge = BASE64URL(SHA256(app_verifier))
+2. 앱 → 시스템 브라우저: GET /employee-auth/oauth2/start?client=mobile&app_challenge=...
+   Employee Auth: 로그인 트랜잭션에 client=mobile, app_challenge 저장 → Keycloak으로 이동 (prompt=login)
+3. Keycloak 로그인 → Callback (백오피스와 같은 Code 교환·ID Token 검증·직원 확인)
+4. Employee Auth: 일회성 ticket 생성(해시 저장, 60초) → 302 pmart-employee://login-callback?ticket=...
+   (토큰·쿠키는 내려주지 않음)
+5. 앱 → POST /employee-auth/mobile/token {ticket, appVerifier}
+   Employee Auth: ticket 꺼내면서 삭제 → SHA256(appVerifier) == app_challenge 확인 → Access·Refresh Token(JSON)
+6. 앱: 토큰을 보안 저장소에 보관, API는 Authorization: Bearer
+7. 갱신: POST /employee-auth/mobile/refresh {refreshToken}  /  로그아웃: POST /employee-auth/mobile/logout {refreshToken}
+```
+
+| 항목 | 내용 |
+|---|---|
+| 앱 복귀 | 커스텀 스킴 `pmart-employee://login-callback`. LAN 테스트 환경에는 HTTPS 도메인이 없어 App Link/Universal Link를 쓸 수 없음 |
+| 커스텀 스킴 가로채기 대비 | ticket은 앱의 `app_verifier`가 있어야 교환 가능. 교환 시도에 실패해도 ticket은 삭제됨(추측 시도 방지) |
+| ticket | 무작위 256bit, DB에는 SHA-256 해시만, 60초, 단일 사용 |
+| 토큰 API | `/employee-auth/mobile/**`: JSON 본문으로만 자격 증명을 받고 쿠키를 쓰지 않으므로 Gateway CSRF 검사 제외 |
+| Refresh Token | 백오피스와 같은 정책(D19). 앱에는 JSON으로 전달 |
+| 토큰 보관 | `flutter_secure_storage` (Android Keystore / iOS Keychain) |
+| 로그인 화면 | `prompt=login`: 앱 로그아웃은 Keycloak SSO 세션을 끝내지 않으므로 매번 비밀번호를 다시 받음 |
+| 기기 → Gateway | 실기기·에뮬레이터 모두 `adb reverse tcp:8080 tcp:8080` 후 `http://localhost:8080`. Android는 `localhost`·`10.0.2.2`에만 평문 HTTP 허용(`network_security_config.xml`) |
+
 ### 일회성 ticket 요구사항
 
 일회성 ticket은 OAuth 표준 Authorization Code와 **다른, PMart 내부 코드**입니다.

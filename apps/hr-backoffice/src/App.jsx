@@ -48,7 +48,7 @@ function Dashboard({ me }) {
       <div className="navbar bg-base-100 shadow-sm px-4">
         <div className="flex-1 text-lg font-bold">PMart 인사팀 백오피스</div>
         <div className="flex items-center gap-3">
-          <span className="text-sm">{me.lastName}{me.firstName} ({me.employeeNo})</span>
+          <span className="text-sm">{me.lastName}{me.firstName} ({me.iamId || me.employeeNo})</span>
           {me.roles?.map((r) => <span key={r} className="badge badge-outline">{r}</span>)}
           <button className="btn btn-sm" onClick={() => logout().catch((e) => alert(e.message))}>로그아웃</button>
         </div>
@@ -76,7 +76,10 @@ function TokenInfo({ me }) {
   )
 }
 
-const EMPTY_FORM = { employeeNo: '', lastName: '', firstName: '', department: '', initialPassword: '', hrAdmin: false }
+// IAM 계정 도메인 (D21). IAM 계정 ID = 계정명@도메인, Keycloak 로그인 ID이자 이메일
+const IAM_DOMAIN = import.meta.env.VITE_IAM_DOMAIN ?? 'pmart.test'
+
+const EMPTY_FORM = { employeeNo: '', iamAccount: '', lastName: '', firstName: '', department: '', initialPassword: '', hrAdmin: false }
 
 function EmployeeAdmin({ me }) {
   const [employees, setEmployees] = useState([])
@@ -94,7 +97,7 @@ function EmployeeAdmin({ me }) {
     setMessage(null)
     try {
       const created = await api.post('/employee-service/employees', form)
-      setMessage({ type: 'success', text: `${created.employeeNo} 등록 완료. 초기 비밀번호로 로그인하면 비밀번호 변경 화면이 나옵니다.` })
+      setMessage({ type: 'success', text: `IAM 계정 ${created.iamId} 발급 완료 (사번 ${created.employeeNo}). 이 계정과 초기 비밀번호로 로그인하면 비밀번호 변경 화면이 나옵니다.` })
       setForm(EMPTY_FORM)
       load()
     } catch (err) {
@@ -123,7 +126,14 @@ function EmployeeAdmin({ me }) {
         <h2 className="card-title">직원 등록</h2>
         <p className="text-sm text-base-content/70">등록하면 Employee Service가 Keycloak Admin REST API로 직원 계정을 만듭니다.</p>
         <form onSubmit={submit} className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <input className="input w-full" placeholder="사번 (예: EMP000123)" value={form.employeeNo} onChange={set('employeeNo')} required />
+          <label className="input w-full md:col-span-2">
+            <input placeholder="IAM 계정명 (예: gildong.hong)" value={form.iamAccount} onChange={set('iamAccount')} required
+              pattern="[a-z0-9]+([._\-][a-z0-9]+)*" minLength={3} maxLength={30} title="영문 소문자·숫자와 . _ - 만 사용" />
+            <span className="text-base-content/60">@{IAM_DOMAIN}</span>
+          </label>
+          <input className="input w-full" placeholder="사번 (인사 정보, 영문 대문자·숫자 3~20자)" value={form.employeeNo}
+            onChange={(e) => setForm({ ...form, employeeNo: e.target.value.toUpperCase() })}
+            required minLength={3} maxLength={20} pattern="[A-Z0-9]{3,20}" title="영문 대문자·숫자 3~20자" />
           <input className="input w-full" placeholder="성" value={form.lastName} onChange={set('lastName')} required />
           <input className="input w-full" placeholder="이름" value={form.firstName} onChange={set('firstName')} required />
           <input className="input w-full" placeholder="부서" value={form.department} onChange={set('department')} />
@@ -138,10 +148,11 @@ function EmployeeAdmin({ me }) {
         <h2 className="card-title mt-6">직원 목록</h2>
         <div className="overflow-x-auto">
           <table className="table table-zebra">
-            <thead><tr><th>사번</th><th>이름</th><th>부서</th><th>상태</th><th>역할</th><th>계정 발급</th><th /></tr></thead>
+            <thead><tr><th>IAM 계정</th><th>사번</th><th>이름</th><th>부서</th><th>상태</th><th>역할</th><th>계정 발급</th><th /></tr></thead>
             <tbody>
               {employees.map((e) => (
                 <tr key={e.employeeNo}>
+                  <td>{e.iamId ?? <span className="text-base-content/40">(이전 방식)</span>}</td>
                   <td>{e.employeeNo}</td>
                   <td>{e.lastName}{e.firstName}</td>
                   <td>{e.department}</td>

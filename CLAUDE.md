@@ -22,7 +22,7 @@
 
 - **PMart**: 국비 훈련생 교육용 MSA 커머스 프로젝트 (이 저장소는 그 Keycloak 적용 검증용)
 - **검증 범위**: PMart **직원(Employee) IAM 및 인증** — Keycloak 기반 직원 로그인, Employee Auth Service의 자체 JWT 발급, Keycloak 계정 프로비저닝, LAN 메일 실습 환경
-- **현재 상태**: 0~9단계 구현·검증 완료 (Keycloak, Gateway, Employee Auth/Employee Service, 샘플 API, 인사팀 백오피스, Refresh Token·퇴사 처리). 남은 단계는 Flutter, LAN 메일. 상세는 [`docs/verification-log.md`](docs/verification-log.md) (2026-11-11 기준)
+- **현재 상태**: 0~10단계 구현·검증 완료 (Keycloak, Gateway, Employee Auth/Employee Service, 샘플 API, 인사팀 백오피스, Refresh Token·퇴사 처리, Flutter 앱). 남은 단계는 LAN 메일. 상세는 [`docs/verification-log.md`](docs/verification-log.md) (2026-11-11 기준)
 - **원본 설계 기록**: [`PMart_Employee_IAM_Authentication_Architecture.md`](PMart_Employee_IAM_Authentication_Architecture.md) — 주제별 정리본은 [`docs/`](docs/README.md)에 있습니다. 두 곳이 충돌하면 원본을 우선하고, 정리본을 고칩니다.
 
 ## 기술 스택 (설계 기준)
@@ -101,6 +101,14 @@
 - 테스트 범위의 역할은 `EMPLOYEE`, `HR_ADMIN`이고, `aud` 값은 `pmart-employee-auth`, `pmart-employee-service`, `pmart-sample-api`입니다.
 - 상세 형식과 검증 규칙은 [`docs/architecture/04-tokens-and-jwt.md`](docs/architecture/04-tokens-and-jwt.md)에 있습니다.
 
+## IAM 계정 — 확정 (D21)
+
+- **Keycloak의 목적은 직원 IAM 계정 발급**입니다. 인사팀이 직원을 등록하면 Employee Service가 Keycloak에 IAM 계정을 만듭니다.
+- **IAM 계정 ID** = `계정명@pmart.test` (예: `gildong.hong@pmart.test`). 계정명은 인사팀이 입력하며 영문 소문자·숫자·`.`·`_`·`-`, 3~30자, 중복 불가.
+- IAM 계정 ID는 **Keycloak 로그인 ID(username)이자 Keycloak 이메일**입니다. 도메인은 `IAM_DOMAIN` 환경변수(기본 `pmart.test`).
+- **사번은 인사 정보로만 사용**합니다(직원 DB, PMart JWT `sub`). 사번으로는 로그인할 수 없습니다.
+- 직원 로그인 = IAM 계정 ID + 비밀번호. 테스트용 인사팀 계정은 `.env`의 `HR_TEST_IAM_ID`(로그인 ID), `HR_TEST_EMPLOYEE_NO`(사번).
+
 ## Refresh Token·퇴사 처리 — 확정 (D19)
 
 - Refresh Token은 무작위 값이며 DB에는 SHA-256 해시만 저장합니다. 로그인 시점부터 8시간 고정이고, 갱신할 때마다 새로 발급(Rotation)합니다.
@@ -108,6 +116,15 @@
 - 백오피스에는 `PMART_EMP_RT` 쿠키(`HttpOnly`, `Path=/employee-auth`)로 전달하고, 갱신(`POST /employee-auth/refresh`)은 CSRF 검사 대상입니다.
 - 퇴사 처리: 직원 DB `INACTIVE` → Keycloak 계정 비활성화·세션 종료 → Refresh Token 전부 폐기. 이미 발급된 Access Token은 최대 15분 유효합니다.
 - 상세 내용은 [`docs/architecture/04-tokens-and-jwt.md`](docs/architecture/04-tokens-and-jwt.md)에 있습니다.
+
+## Flutter 앱 로그인 — 확정 (D20)
+
+- 시스템 브라우저(Custom Tabs / ASWebAuthenticationSession)로 로그인합니다. 임베디드 WebView는 쓰지 않습니다.
+- 앱 복귀는 **커스텀 스킴 `pmart-employee://login-callback`**입니다. LAN 테스트 환경에는 HTTPS 도메인이 없어 App Link를 쓸 수 없기 때문입니다.
+- 커스텀 스킴은 다른 앱이 가로챌 수 있으므로, 일회성 ticket은 앱이 만든 `app_verifier`(S256)에 결속합니다. ticket은 60초·단일 사용이며, 교환 실패 시에도 폐기됩니다.
+- 토큰 교환·갱신·로그아웃은 `/employee-auth/mobile/**`에서 JSON 본문으로 합니다. 쿠키를 쓰지 않으므로 Gateway CSRF 검사에서 제외합니다.
+- 토큰은 기기 보안 저장소(`flutter_secure_storage`)에 보관하고 `Authorization: Bearer`로 보냅니다.
+- 앱 로그아웃은 Keycloak SSO 세션을 끝내지 않으므로 앱 로그인은 `prompt=login`으로 매번 비밀번호를 받습니다.
 
 ## 테스트용 인사팀 백오피스 계정: Employee Auth Service가 부팅 시 생성 — 확정
 
@@ -209,6 +226,7 @@ services/employee-auth/          Employee Auth Service (OIDC Client, PMart JWT �
 services/employee-service/       Employee Service (직원 정보, Keycloak 계정 발급)
 services/sample-api/             샘플 업무 API (PMart JWT 검증 확인용)
 apps/hr-backoffice/              인사팀 백오피스 React SPA (Nginx) — 외부 포트 3000
+apps/employee_mobile/            직원 Flutter 앱 (Compose 밖, 에뮬레이터·실기기에서 실행)
 scripts/e2e-test.sh              통합 검증 스크립트
 docs/verification-log.md         검증 기록 (이 프로젝트의 핵심 결과물)
 ```
@@ -224,15 +242,17 @@ docker compose down               # 중지 (DB 유지)
 docker compose down -v            # 중지 + DB 삭제 (Realm·테스트 계정이 다시 생성됨)
 ```
 
-- 백오피스: http://localhost:3000 — 테스트 계정은 `.env`의 `HR_TEST_USERNAME` / `HR_TEST_PASSWORD`
+- 백오피스: http://localhost:3000 — 테스트 계정은 `.env`의 `HR_TEST_IAM_ID` / `HR_TEST_PASSWORD`
 - 서비스 하나만 다시 빌드: `docker compose up -d --build employee-auth`
 - 로컬 컴파일 확인: `cd services/<서비스> && ./gradlew compileJava`
 - 백오피스 개발 서버: `cd apps/hr-backoffice && npm run dev` (포트 3000, Gateway는 Compose로 실행)
-- Keycloak 관리: 외부 포트가 없으므로 `docker compose exec keycloak /opt/keycloak/bin/kcadm.sh ...` 사용
+- Flutter 앱: `adb reverse tcp:8080 tcp:8080` 후 `cd apps/employee_mobile && flutter run` (기기의 localhost:8080 → PC의 Gateway). 다른 주소는 `--dart-define=GATEWAY_URL=...`
+- Keycloak 관리: 외부 포트가 없으므로 `docker compose exec keycloak /opt/keycloak/bin/kcadm.sh ...` 사용. Git Bash에서는 `MSYS_NO_PATHCONV=1`을 붙여야 컨테이너 경로가 Windows 경로로 바뀌지 않음
 
 ## 구현 규칙
 
 - 각 Spring Boot 서비스는 `/error`를 `permitAll`로 열어 둡니다. 막으면 모든 오류가 403으로 바뀝니다.
+- 입력값 검증 메시지는 한국어로 쓰고, 검증 실패는 `ProblemDetail`의 `detail`에 담아 응답합니다(백오피스가 그대로 표시).
 - 하위 서비스(Employee Auth, Employee Service, 샘플 API)는 CSRF·CORS를 끄고 `Authorization: Bearer`만 받습니다.
 - Employee Service·Employee Auth Service의 내부 API(`/internal/**`)는 Gateway 라우트가 없으며 `X-Internal-Api-Key`로 보호합니다.
 - 역할(`EMPLOYEE`, `HR_ADMIN`)은 Employee Service DB에 둡니다. Keycloak에는 역할을 두지 않습니다.

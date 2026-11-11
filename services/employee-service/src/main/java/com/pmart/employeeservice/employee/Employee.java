@@ -7,6 +7,7 @@ import java.util.List;
 public record Employee(
         Long id,
         String employeeNo,
+        String iamId,
         String firstName,
         String lastName,
         String email,

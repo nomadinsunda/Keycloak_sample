@@ -49,6 +49,7 @@ public class SecurityConfig {
             "/employee-auth/callback",
             "/employee-auth/refresh",  // Refresh Token 쿠키로 인증 (Access Token 만료 후 호출)
             "/employee-auth/logout",
+            "/employee-auth/mobile/**", // Flutter 앱: ticket·Refresh Token을 JSON 본문으로 교환 (D20)
             "/csrf",
             "/actuator/health");
 
@@ -124,14 +125,17 @@ public class SecurityConfig {
 
     /**
      * CSRF 검사 대상: 쿠키로 인증하는 상태 변경 요청.
-     * 제외: Bearer 헤더 요청(Flutter), /iam/**(Keycloak 자체 CSRF 방어), Callback(GET)
+     * 제외: Bearer 헤더 요청(Flutter), /iam/**(Keycloak 자체 CSRF 방어), Callback(GET),
+     *       /employee-auth/mobile/**(쿠키를 쓰지 않고 JSON 본문으로 자격 증명을 보내므로 CSRF 대상 아님)
      */
     private ServerWebExchangeMatcher csrfRequiredMatcher() {
         return exchange -> {
             var request = exchange.getRequest();
+            String path = request.getPath().value();
             boolean required = STATE_CHANGING.contains(request.getMethod())
                     && !request.getHeaders().containsHeader(HttpHeaders.AUTHORIZATION)
-                    && !PATHS.match("/iam/**", request.getPath().value());
+                    && !PATHS.match("/iam/**", path)
+                    && !PATHS.match("/employee-auth/mobile/**", path);
             return required ? MatchResult.match() : MatchResult.notMatch();
         };
     }

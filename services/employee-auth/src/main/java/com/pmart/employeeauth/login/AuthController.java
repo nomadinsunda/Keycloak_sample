@@ -44,10 +44,12 @@ public class AuthController {
     private final EmployeeDirectoryClient employees;
     private final PmartTokenService tokens;
     private final RefreshTokenService refreshTokens;
+    private final MobileTicketRepository tickets;
 
     public AuthController(AuthProperties props, LoginTransactionRepository transactions, KeycloakOidcClient oidc,
                           EmployeeDirectoryClient employees, PmartTokenService tokens,
-                          RefreshTokenService refreshTokens) {
+                          RefreshTokenService refreshTokens, MobileTicketRepository tickets) {
+        this.tickets = tickets;
         this.props = props;
         this.transactions = transactions;
         this.oidc = oidc;
@@ -56,14 +58,31 @@ public class AuthController {
         this.refreshTokens = refreshTokens;
     }
 
-    /** 1. 로그인 시작: state·nonce·PKCE 생성·저장 후 Keycloak 로그인 화면(Gateway /iam 경유)으로 이동 */
+    /**
+     * 1. 로그인 시작: state·nonce·PKCE 생성·저장 후 Keycloak 로그인 화면(Gateway /iam 경유)으로 이동.
+     * Flutter 앱은 client=mobile과 app_challenge(= BASE64URL(SHA256(app_verifier)))를 함께 보냅니다. (D20)
+     */
     @GetMapping("/oauth2/start")
-    public ResponseEntity<Void> start() {
-        LoginTransaction tx = new LoginTransaction(
-                KeycloakOidcClient.randomToken(), KeycloakOidcClient.randomToken(), KeycloakOidcClient.randomToken());
+    public ResponseEntity<Void> start(@RequestParam(defaultValue = "backoffice") String client,
+                                      @RequestParam(name = "app_challenge", required = false) String appChallenge) {
+        String state = KeycloakOidcClient.randomToken();
+        String nonce = KeycloakOidcClient.randomToken();
+        String verifier = KeycloakOidcClient.randomToken();
+        LoginTransaction tx;
+        if ("mobile".equals(client)) {
+            if (appChallenge == null || !APP_CHALLENGE.matcher(appChallenge).matches()) {
+                return ResponseEntity.badRequest().build();
+            }
+            tx = new LoginTransaction(state, nonce, verifier, LoginTransactionRepository.Client.MOBILE, appChallenge);
+        } else {
+            tx = LoginTransaction.backoffice(state, nonce, verifier);
+        }
         transactions.save(tx, props.loginTransactionTtl());
         return redirect(oidc.authorizationUrl(tx)).build();
     }
+
+    /** S256 결과: Base64URL 43자 */
+    private static final java.util.regex.Pattern APP_CHALLENGE = java.util.regex.Pattern.compile("^[A-Za-z0-9_-]{43}$");
 
     /** 3~4. Callback: state 검증 → Code 교환 → ID Token 검증 → 직원 확인 → PMart JWT를 Set-Cookie로 전달 */
     @GetMapping("/callback")
@@ -75,24 +94,32 @@ public class AuthController {
         }
         LoginTransaction tx = transactions.consume(state).orElse(null);
         if (tx == null) {
-            // 위조된 state, 이미 사용된 state, 만료된 로그인 트랜잭션
+            // 위조된 state, 이미 사용된 state, 만료된 로그인 트랜잭션 (어느 클라이언트인지 알 수 없으므로 백오피스로)
             return loginFailed("invalid_state");
         }
+        boolean mobile = tx.client() == LoginTransactionRepository.Client.MOBILE;
 
         Jwt idToken;
         try {
             idToken = oidc.exchangeAndVerify(code, tx);
         } catch (RuntimeException e) {
             log.warn("Code 교환 또는 ID Token 검증 실패", e);
-            return loginFailed("invalid_id_token");
+            return mobile ? mobileLoginFailed("invalid_id_token") : loginFailed("invalid_id_token");
         }
 
         EmployeeStatus employee = employees.findByKeycloakId(idToken.getSubject()).orElse(null);
-        if (employee == null) {
-            return loginFailed("unknown_employee");
+        String failure = employee == null ? "unknown_employee" : !employee.active() ? "inactive_employee" : null;
+        if (failure != null) {
+            return mobile ? mobileLoginFailed(failure) : loginFailed(failure);
         }
-        if (!employee.active()) {
-            return loginFailed("inactive_employee");
+
+        if (mobile) {
+            // Flutter 앱: 토큰을 URL에 싣지 않고 일회성 ticket만 커스텀 스킴으로 전달 (D20)
+            String ticket = tickets.create(tx.appChallenge(), employee.employeeNo(), idToken.getSubject(),
+                    props.mobile().ticketTtl());
+            log.info("직원 로그인 성공(앱): {} → ticket 발급", employee.employeeNo());
+            return redirect(UriComponentsBuilder.fromUriString(props.mobile().redirectUri())
+                    .queryParam("ticket", ticket).build().toUriString()).build();
         }
 
         PmartTokenService.IssuedToken token = tokens.issue(employee.employeeNo(), employee.roles(), idToken.getSubject());
@@ -140,6 +167,7 @@ public class AuthController {
         EmployeeStatus employee = employees.findByKeycloakId(jwt.getClaimAsString("external_subject")).orElse(null);
         return Map.of(
                 "employeeNo", jwt.getSubject(),
+                "iamId", employee != null && employee.iamId() != null ? employee.iamId() : "",
                 "firstName", employee != null ? employee.firstName() : "",
                 "lastName", employee != null ? employee.lastName() : "",
                 "roles", jwt.getClaimAsStringList("roles") != null ? jwt.getClaimAsStringList("roles") : List.of(),
@@ -178,6 +206,12 @@ public class AuthController {
             }
         }
         return null;
+    }
+
+    private ResponseEntity<Void> mobileLoginFailed(String reason) {
+        log.info("직원 로그인 실패(앱): {}", reason);
+        return redirect(UriComponentsBuilder.fromUriString(props.mobile().redirectUri())
+                .queryParam("error", reason).build().toUriString()).build();
     }
 
     private ResponseEntity<Void> loginFailed(String reason) {

@@ -90,9 +90,9 @@
 - Realm: `pmart-employees`
 - `master` Realm은 Keycloak 관리용으로 유지하고 일반 직원 계정은 업무 Realm에 등록
 - 고객·라이더 Realm은 만들 필요 없음
-- 직원 ID 예시: `EMP000123`
+- 사번 예시: `EMP000123` (인사 정보), IAM 계정 ID 예시: `gildong.hong@pmart.test` (로그인 ID)
 - Keycloak `sub`(사용자 UUID)를 안정적인 외부 식별자로 저장하고 PMart 사번과 매핑
-- **이메일 주소가 반드시 필요한 것은 아님**. 실제 사내 메일함을 운영한다면 이메일 필드를 사용할 수 있음
+- ~~이메일 주소가 반드시 필요한 것은 아님~~ → **변경(D21)**: Keycloak은 직원 **IAM 계정**을 발급하며, IAM 계정 ID(`계정명@pmart.test`)가 Keycloak 로그인 ID이자 이메일임. 사번은 인사 정보로만 사용하고 로그인에 쓰지 않음
 
 ### 2.2 Keycloak Client — 권장 구성
 
@@ -436,10 +436,10 @@ Authorization: Bearer <SERVICE_ACCOUNT_ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "username": "EMP000123",
+  "username": "gildong.hong@pmart.test",
   "firstName": "길동",
   "lastName": "홍",
-  "email": "hong@pmart.test",
+  "email": "gildong.hong@pmart.test",
   "enabled": true,
   "requiredActions": ["UPDATE_PASSWORD"]
 }
@@ -619,7 +619,7 @@ services:
 
 1. **Gateway ↔ Keycloak 경로 설정:** Keycloak을 Gateway 뒷단에 두는 것은 확정. 남은 것은 Keycloak `hostname`/relative path/프록시 헤더 설정, Admin API·관리 콘솔 비공개 처리.
 2. **Employee Auth Service 로그인 API:** 인증 시작 URL 반환 방식과 Callback 경로, 만료 시간·재시도 처리. (`state`·`nonce`·PKCE 저장소는 PostgreSQL로 확정)
-3. **Flutter 로그인 완료:** App Link/Universal Link의 실제 도메인, 일회성 ticket의 앱 바인딩·재사용 방지, PMart JWT 안전한 저장.
+3. **Flutter 로그인 완료:** 결정됨(테스트 환경) — LAN에는 HTTPS 도메인이 없어 App Link 대신 커스텀 스킴 `pmart-employee://login-callback` 사용, 일회성 ticket을 앱의 `app_verifier`에 결속(60초·단일 사용), 토큰은 기기 보안 저장소. 실제 App Link/Universal Link는 운영 환경에서 별도 검증 필요.
 4. **인사팀 백오피스(React SPA) 로그인 완료:** 결정됨 — PMart JWT를 `Set-Cookie`로 전달, CORS와 CSRF 방어는 Gateway에서 적용.
 5. **자체 JWT 형식:** 결정됨 — RS256, 클레임, Access Token 15분, 키 보관·회전 방식 (4.3절).
 6. **Refresh Token 정책:** 결정됨 — 무작위 값(해시 저장), 로그인 후 8시간 고정, Rotation, 재사용 탐지 시 세션 폐기, 퇴사 시 Keycloak 계정 비활성화와 Refresh Token 즉시 폐기 (`docs/architecture/04-tokens-and-jwt.md`).

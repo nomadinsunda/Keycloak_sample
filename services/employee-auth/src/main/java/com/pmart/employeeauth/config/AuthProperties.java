@@ -13,7 +13,12 @@ public record AuthProperties(
         Duration loginTransactionTtl,
         Keycloak keycloak,
         EmployeeService employeeService,
-        HrTestAccount hrTestAccount) {
+        HrTestAccount hrTestAccount,
+        Mobile mobile) {
+
+    /** Flutter 앱: 로그인 후 돌아갈 커스텀 스킴 주소, 일회성 ticket 수명 */
+    public record Mobile(String redirectUri, Duration ticketTtl) {
+    }
 
     public record Jwt(String issuer, List<String> audiences, Duration accessTokenTtl, String cookieName,
                       Duration refreshTokenTtl, String refreshCookieName) {
@@ -26,7 +31,8 @@ public record AuthProperties(
     public record EmployeeService(String baseUrl, String internalApiKey) {
     }
 
-    public record HrTestAccount(String username, String password) {
+    /** 테스트용 인사팀 계정: 사번(인사 정보), IAM 계정 ID(로그인 ID), 비밀번호 */
+    public record HrTestAccount(String employeeNo, String iamId, String password) {
     }
 
     /** 브라우저가 보는 Keycloak Realm 주소 = ID Token의 iss */

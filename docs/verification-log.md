@@ -97,8 +97,87 @@
 2. **퇴사 후 Access Token 유효 시간**: Refresh Token과 Keycloak 계정은 즉시 막히지만, 이미 발급된 Access Token은 최대 15분 동안 유효함. 자체 JWT를 쓰는 구조의 본질적인 제약이며, 즉시 차단이 필요하면 `jti` 차단 목록 같은 별도 장치가 필요함.
 3. **Keycloak 세션 정리는 명시적으로 호출**: 계정 비활성화(`enabled=false`)와 함께 `/users/{id}/logout`도 호출해 기존 Keycloak SSO 세션을 정리함. 비활성화만으로 기존 세션이 끊기는지는 따로 검증하지 않음.
 
+## 2026-11-11 — 10단계 Flutter 앱
+
+### 사용 버전
+
+| 구성 요소 | 버전 |
+|---|---|
+| Flutter / Dart | 3.47.2 / 3.13.2 |
+| flutter_web_auth_2 | 5.1.0 (Custom Tabs / ASWebAuthenticationSession) |
+| flutter_secure_storage | 11.2.0 |
+| http / crypto | 1.6.0 / 3.0.8 |
+| 확인 기기 | Android 16 에뮬레이터 (`dayfold_test`), Chrome Custom Tabs |
+
+### 결과 요약
+
+- `scripts/e2e-test.sh`: **65개 항목 모두 통과** (앱 서버 흐름 17개 추가, 앱 동작을 curl로 재현)
+- 에뮬레이터 실제 실행 확인: 로그인 → Custom Tab에서 Keycloak 로그인 → 앱 복귀 → HR_ADMIN API 200 → 토큰 갱신 → 앱 재시작 후 로그인 유지 → 로그아웃. 로그아웃 후 DB에서 해당 세션의 Refresh Token이 모두 폐기된 것 확인
+- `flutter analyze` 경고 0, debug APK 빌드 성공
+- **iOS는 확인하지 않음** (Windows 환경이라 빌드 불가). iOS 프로젝트 폴더만 생성됨
+
+| 검증 항목 | 결과 |
+|---|---|
+| `app_challenge` 없는 앱 로그인 시작 거부 | 동작 (400) |
+| 앱 복귀 URL에는 ticket만 있고 토큰·쿠키 없음 | 동작 |
+| 다른 `app_verifier`로 ticket 교환 (가로챈 ticket) | 거부 (401) |
+| 교환에 실패한 ticket은 정상 verifier로도 재사용 불가 | 동작 |
+| 정상 ticket 교환, 같은 ticket 재사용 거부 | 동작 |
+| 앱 Access Token으로 Bearer API 호출 | 동작 |
+| 앱 Refresh Token Rotation·재사용 탐지·로그아웃 | 동작 |
+| `prompt=login`: Keycloak SSO 세션이 남아 있어도 비밀번호 재입력 | 동작 ("Please re-authenticate") |
+| 기기에서 `adb reverse`로 `localhost:8080` 접속 (Keycloak `iss`·Callback 주소 변경 없음) | 동작 |
+
+### 설계와 다르게 처리한 것
+
+| 설계 | 실제 | 이유 |
+|---|---|---|
+| Android App Link / iOS Universal Link로 앱 복귀 | **커스텀 스킴 `pmart-employee://`** | App Link는 인증서가 있는 HTTPS 도메인과 `assetlinks.json` 검증이 필요. LAN 테스트 환경에는 없음. 대신 ticket을 앱의 `app_verifier`에 결속해 가로채기를 무력화 |
+| (설계에 없음) 앱 로그아웃 시 Keycloak SSO 세션 | 끝내지 않고 `prompt=login`으로 매번 재인증 | Keycloak 로그아웃 리다이렉트에 커스텀 스킴을 등록하려면 Realm 설정 변경이 필요. Realm은 최초 Import만 되므로 단순한 방법 선택 |
+
+### 알게 된 점
+
+1. **에뮬레이터 Chrome 첫 실행 화면**: 새 에뮬레이터는 Chrome 초기 설정·약관 화면이 먼저 떠서 Custom Tab 로그인을 가로막음. 자동화 테스트 환경에서는 미리 처리해 둬야 함.
+2. **로그인 중 앱 프로세스가 죽으면 로그인 결과를 잃음**: Custom Tab이 열린 상태에서 앱이 종료되면, 로그인 후 커스텀 스킴으로 돌아와도 결과를 받을 앱이 없어 홈 화면으로 감. 서버에는 쓰이지 않은 ticket이 남지만 60초 뒤 만료·정리되어 위험은 없음. 사용자는 다시 로그인하면 됨.
+3. **`adb reverse`가 주소 문제를 단순하게 해결**: 기기의 `localhost:8080`을 PC로 연결하면 Keycloak `iss`, Callback 주소, Realm Redirect URI를 바꾸지 않고 브라우저·앱이 같은 주소를 씀. 단, USB(또는 에뮬레이터) 연결이 필요하며 같은 LAN의 다른 기기에서 무선으로 쓰려면 `PUBLIC_BASE_URL`을 LAN 주소로 바꾸고 Realm Redirect URI도 함께 바꿔야 함.
+4. **Flutter 플러그인 Kotlin 경고**: 빌드 시 일부 플러그인이 Flutter의 새 Kotlin 빌드 방식으로 아직 옮겨가지 않았다는 경고가 나옴. 현재 빌드에는 영향 없음.
+
+## 2026-11-11 — IAM 계정 발급 방식 변경 (D21)
+
+### 변경 내용
+
+Keycloak을 사용하는 목적은 **직원 IAM 계정 발급**이다. 이전 구현은 사번을 Keycloak username으로 쓰고 이메일(`사번@pmart.test`)을 자동으로 만들어 이 목적이 드러나지 않았다.
+
+| 항목 | 이전 | 변경 후 |
+|---|---|---|
+| Keycloak username (로그인 ID) | 사번 | **IAM 계정 ID** `계정명@pmart.test` |
+| Keycloak email | `사번@pmart.test` 자동 생성 | IAM 계정 ID와 같음 |
+| 사번 | 로그인 ID 겸 인사 정보 | 인사 정보로만 사용 (PMart JWT `sub`는 그대로 사번) |
+| 계정명 결정 | — | 인사팀이 등록 화면에서 입력, 형식·중복 검사 |
+
+### 결과 요약
+
+- `scripts/e2e-test.sh`: **73개 항목 통과** (IAM 계정 항목 8개 추가). 마지막 연속 5회 실행 모두 통과
+- 확인 항목: 발급된 IAM 계정 ID, Keycloak username·email이 IAM 계정 ID와 같음(Keycloak DB 직접 확인), IAM 계정 ID 중복 거부(409), 형식 오류 거부(400), IAM 계정 ID로 로그인, `/me`에 IAM 계정 ID·사번, **사번으로는 로그인 불가**
+- 기존 데이터: 테스트용 인사팀 계정은 부팅 시 새 IAM 계정(`hr.admin@pmart.test`)을 만들고 사번 매핑을 옮긴 뒤, 사번으로 로그인하던 이전 Keycloak 계정을 비활성화함. 이전에 등록한 테스트 직원은 IAM 계정 ID가 없는 "이전 방식"으로 남아 있음
+
+### 백오피스 직원 등록 실패 (사용자 보고)
+
+- 증상: 사번 `EMP0003`으로 직원 등록 시 실패. 화면에는 원인이 표시되지 않음
+- 원인 1: 사번 형식을 "영문 2~3자 + 숫자 정확히 6자리"로 근거 없이 엄격하게 정해 둠 → **영문 대문자·숫자 3~20자**로 완화 (사번은 인사 정보일 뿐)
+- 원인 2: Spring Boot 기본 오류 응답에 입력값 오류 내용이 빠져 화면에 원인이 안 보임 → `@RestControllerAdvice`로 항목별 한국어 메시지를 `ProblemDetail.detail`에 담아 응답
+- 교훈: 설계에 없는 입력 규칙을 임의로 정하지 말 것. 검증 실패는 항상 사용자에게 이유를 보여줄 것
+- 함정: Git Bash에서 `docker compose exec keycloak /opt/keycloak/bin/kcadm.sh`를 실행하면 경로가 Windows 경로로 바뀌어 실패함. `MSYS_NO_PATHCONV=1` 필요
+
+### 해결하지 못한 문제: 앱 연속 로그인 간헐 실패
+
+- 증상: 검증 스크립트 약 11회 실행 중 2회, 12단계(앱)에서 **같은 브라우저 세션으로 약 1초 간격의 두 번째 앱 로그인(`prompt=login`)** 후 Keycloak이 Callback으로 리다이렉트하지 않음. 이후 항목이 연쇄 실패
+- 확인한 것: Keycloak 로그에 해당 로그인 오류 이벤트 없음, Employee Auth Service에는 요청이 도달하지 않음, 바로 뒤의 세 번째 앱 로그인은 성공, 같은 동작을 12회 반복한 별도 재현 시도와 5회 연속 전체 실행에서는 재현 안 됨
+- 원인: **미확인**. 실패 시 Keycloak 응답 화면을 저장하는 장치를 넣었으나 그 뒤로 재현되지 않아 화면을 확보하지 못함
+- 영향 판단: 사람이 1초 안에 두 번 로그인하는 상황은 드물지만, 원인을 모르는 상태이므로 운영 적용 전에 Keycloak 이벤트 로그(`LOGIN`·`CODE_TO_TOKEN` 등)를 켜고 다시 확인해야 함
+
 ### 남은 단계
 
-- 10단계 Flutter 앱 (미결정 #3)
+- 11단계 LAN 메일
 - 11단계 LAN 메일
 - 자동화 테스트(JUnit, Testcontainers) 추가. Initializr가 만든 기본 테스트(`contextLoads`)는 DB 없이 실패하므로 삭제한 상태

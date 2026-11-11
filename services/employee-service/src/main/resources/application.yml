@@ -10,6 +10,9 @@ spring:
     password: ${EMPLOYEE_DB_PASSWORD}
 
 pmart:
+  iam:
+    # IAM 계정 ID = 계정명@도메인 (Keycloak 로그인 ID이자 이메일)
+    domain: ${IAM_DOMAIN:pmart.test}
   jwt:
     # Employee Auth Service가 발급한 PMart JWT 검증 설정
     issuer: ${PMART_JWT_ISSUER:https://employee-auth.pmart.test}

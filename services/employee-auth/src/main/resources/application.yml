@@ -23,6 +23,10 @@ pmart:
     refresh-token-ttl: 8h
     refresh-cookie-name: PMART_EMP_RT
   login-transaction-ttl: 5m
+  mobile:
+    # Flutter 앱 복귀 주소 (커스텀 스킴). LAN 테스트 환경이라 App Link 대신 사용 (D20)
+    redirect-uri: pmart-employee://login-callback
+    ticket-ttl: 60s
   keycloak:
     # 서버 간 호출(토큰 교환, JWKS, Admin API)은 Gateway를 경유하지 않고 내부 주소로 직접 호출
     internal-base-url: http://keycloak:8080/iam
@@ -35,7 +39,9 @@ pmart:
     base-url: http://employee-service:8080
     internal-api-key: ${INTERNAL_API_KEY}
   hr-test-account:
-    username: ${HR_TEST_USERNAME}
+    # 사번은 인사 정보, IAM 계정 ID가 로그인 ID (D21)
+    employee-no: ${HR_TEST_EMPLOYEE_NO}
+    iam-id: ${HR_TEST_IAM_ID}
     password: ${HR_TEST_PASSWORD}
 
 management:

@@ -10,7 +10,7 @@
        ├─ HR 권한 확인
        ├─ PMart PostgreSQL에 직원 정보 저장
        ├─ Keycloak Admin REST API로 직원 IAM 계정 생성
-       ├─ Keycloak 사용자 UUID ↔ 사번 매핑 저장
+       ├─ Keycloak 사용자 UUID ↔ 사번 ↔ IAM 계정 ID 매핑 저장
        ├─ (메일 운영 시) 직원 메일함 생성
        └─ 계정 발급 결과·실패 상태 기록
 ```
@@ -19,6 +19,17 @@
 - PMart 백오피스는 **React SPA**(Vite + Tailwind CSS + daisyUI 최신 안정 버전)입니다. 인사팀 직원은 다른 직원과 같은 Keycloak 로그인 흐름으로 로그인하고, SPA는 Keycloak Admin API를 직접 호출하지 않고 Gateway → Employee Service만 호출합니다.
 - Employee Service는 Keycloak DB를 직접 수정하지 않고 **Admin REST API**를 사용합니다.
 - **Employee Service가 Keycloak을 호출할 때(Client Credentials 토큰 발급, Admin REST API)는 Gateway를 경유하지 않고** Compose 내부 네트워크에서 `http://keycloak:8080`을 직접 호출합니다.
+
+## IAM 계정 발급 — 확정 (D21)
+
+| 항목 | 내용 |
+|---|---|
+| IAM 계정 ID | `계정명@pmart.test` (도메인은 `IAM_DOMAIN`). 예: `gildong.hong@pmart.test` |
+| 계정명 | 인사팀이 직원 등록 때 입력. 영문 소문자·숫자·`.`·`_`·`-`, 3~30자 |
+| Keycloak username·email | 둘 다 IAM 계정 ID |
+| 사번 | 인사 정보. 영문 대문자·숫자 3~20자. 직원 DB와 PMart JWT `sub`에만 사용, 로그인 불가 |
+| 중복 | 다른 직원이 쓰는 IAM 계정 ID면 409. 같은 사번 재시도(발급 실패 후)는 이어서 처리 |
+| 초기 비밀번호 | 인사팀 입력, 첫 로그인 때 변경(temporary) |
 
 ## 테스트용 인사팀 백오피스 계정 — 확정
 
@@ -32,7 +43,7 @@
 직원 DB 저장과 Keycloak 계정 생성은 **단일 트랜잭션이 아닙니다.** 다음을 설계해야 합니다.
 
 - **발급 상태**: 예) `PENDING` → `IAM_CREATED` → `MAIL_CREATED` → `COMPLETED` / `FAILED`
-- **멱등성**: 재시도 시 중복 계정이 생기지 않도록 username(사번)으로 존재 여부 확인, `409 Conflict` 처리
+- **멱등성**: 재시도 시 중복 계정이 생기지 않도록 username(IAM 계정 ID)으로 존재 여부 확인, `409 Conflict` 처리
 - **재시도**: 일시적 오류는 재시도, 영구 오류는 실패 상태로 기록하고 관리자 확인
 - **보상**: 후속 단계가 영구 실패하면 생성된 계정 비활성화 등
 
@@ -57,10 +68,10 @@ Authorization: Bearer <SERVICE_ACCOUNT_ACCESS_TOKEN>
 Content-Type: application/json
 
 {
-  "username": "EMP000123",
+  "username": "gildong.hong@pmart.test",
   "firstName": "길동",
   "lastName": "홍",
-  "email": "hong@pmart.test",
+  "email": "gildong.hong@pmart.test",
   "enabled": true,
   "requiredActions": ["UPDATE_PASSWORD"]
 }

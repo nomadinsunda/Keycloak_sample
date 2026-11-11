@@ -3,6 +3,8 @@
 | 용어 | 설명 |
 |---|---|
 | IAM | Identity and Access Management. 계정·인증·권한 관리 |
+| IAM 계정 | Keycloak이 발급하는 직원 계정. ID는 `계정명@pmart.test`이며 Keycloak 로그인 ID이자 이메일 (D21) |
+| 사번 | 인사 정보용 직원 번호(예: `EMP000123`). 로그인에는 쓰지 않음 |
 | IdP | Identity Provider. 사용자 신원을 확인해 주는 시스템. 여기서는 Keycloak |
 | OAuth 2.0 | 권한 위임 프레임워크. Access Token 발급 규칙 |
 | OIDC | OpenID Connect. OAuth 2.0 위에 **신원 인증**(ID Token)을 더한 표준 |

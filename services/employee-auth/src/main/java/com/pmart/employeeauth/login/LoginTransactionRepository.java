@@ -27,10 +27,11 @@ public class LoginTransactionRepository {
 
     public void save(LoginTransaction tx, Duration ttl) {
         jdbc.sql("""
-                INSERT INTO login_transactions (state, nonce, code_verifier, expires_at)
-                VALUES (:state, :nonce, :verifier, now() + make_interval(secs => :ttl))
+                INSERT INTO login_transactions (state, nonce, code_verifier, client, app_challenge, expires_at)
+                VALUES (:state, :nonce, :verifier, :client, :appChallenge, now() + make_interval(secs => :ttl))
                 """)
                 .param("state", tx.state()).param("nonce", tx.nonce()).param("verifier", tx.codeVerifier())
+                .param("client", tx.client().name().toLowerCase()).param("appChallenge", tx.appChallenge())
                 .param("ttl", ttl.toSeconds())
                 .update();
     }
@@ -39,11 +40,12 @@ public class LoginTransactionRepository {
     public Optional<LoginTransaction> consume(String state) {
         return jdbc.sql("""
                 DELETE FROM login_transactions WHERE state = :state
-                RETURNING state, nonce, code_verifier, expires_at
+                RETURNING state, nonce, code_verifier, client, app_challenge, expires_at
                 """)
                 .param("state", state)
                 .query((rs, n) -> new Row(
-                        new LoginTransaction(rs.getString("state"), rs.getString("nonce"), rs.getString("code_verifier")),
+                        new LoginTransaction(rs.getString("state"), rs.getString("nonce"), rs.getString("code_verifier"),
+                                Client.valueOf(rs.getString("client").toUpperCase()), rs.getString("app_challenge")),
                         rs.getObject("expires_at", OffsetDateTime.class)))
                 .optional()
                 .filter(row -> row.expiresAt().isAfter(OffsetDateTime.now()))
@@ -53,14 +55,21 @@ public class LoginTransactionRepository {
     @Scheduled(fixedDelayString = "PT5M")
     public void deleteExpired() {
         int deleted = jdbc.sql("DELETE FROM login_transactions WHERE expires_at < now()").update();
+        deleted += jdbc.sql("DELETE FROM mobile_login_tickets WHERE expires_at < now()").update();
         if (deleted > 0) {
-            log.info("만료된 로그인 트랜잭션 {}건 정리", deleted);
+            log.info("만료된 로그인 트랜잭션·ticket {}건 정리", deleted);
         }
     }
 
     private record Row(LoginTransaction tx, OffsetDateTime expiresAt) {
     }
 
-    public record LoginTransaction(String state, String nonce, String codeVerifier) {
+    /** 로그인을 시작한 클라이언트: 인사팀 백오피스(쿠키) 또는 Flutter 앱(ticket 교환) */
+    public enum Client { BACKOFFICE, MOBILE }
+
+    public record LoginTransaction(String state, String nonce, String codeVerifier, Client client, String appChallenge) {
+        public static LoginTransaction backoffice(String state, String nonce, String codeVerifier) {
+            return new LoginTransaction(state, nonce, codeVerifier, Client.BACKOFFICE, null);
+        }
     }
 }

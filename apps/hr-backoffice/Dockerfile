@@ -6,7 +6,8 @@ RUN npm ci
 COPY . .
 # 브라우저가 호출할 Gateway 주소 (빌드 시점에 번들에 들어감)
 ARG VITE_GATEWAY_URL=http://localhost:8080
-ENV VITE_GATEWAY_URL=$VITE_GATEWAY_URL
+ARG VITE_IAM_DOMAIN=pmart.test
+ENV VITE_GATEWAY_URL=$VITE_GATEWAY_URL VITE_IAM_DOMAIN=$VITE_IAM_DOMAIN
 RUN npm run build
 
 # 실행 단계: Nginx로 정적 파일 제공
