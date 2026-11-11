@@ -24,10 +24,13 @@ public class EmployeeProvisioningService {
     private final KeycloakAdminClient keycloak;
     private final EmployeeAuthSessionClient sessions;
     private final String iamDomain;
+    private final com.pmart.employeeservice.mail.MailboxProvisioner mailboxes;
 
     public EmployeeProvisioningService(EmployeeRepository repository, KeycloakAdminClient keycloak,
                                        EmployeeAuthSessionClient sessions,
-                                       com.pmart.employeeservice.config.PmartProperties props) {
+                                       com.pmart.employeeservice.config.PmartProperties props,
+                                       com.pmart.employeeservice.mail.MailboxProvisioner mailboxes) {
+        this.mailboxes = mailboxes;
         this.iamDomain = props.iam().domain();
         this.repository = repository;
         this.keycloak = keycloak;
@@ -63,6 +66,12 @@ public class EmployeeProvisioningService {
             // 인사팀이 정한 초기 비밀번호. 첫 로그인 때 직원이 직접 바꾸도록 temporary=true
             keycloak.setPassword(keycloakUserId, req.initialPassword(), true);
             repository.markCompleted(req.employeeNo(), keycloakUserId);
+            // IAM 계정 ID = 메일 주소. 메일함 생성 실패는 IAM 발급을 되돌리지 않고, 다음 부팅 동기화에서 다시 시도
+            try {
+                mailboxes.ensureMailbox(iamId);
+            } catch (RuntimeException mailError) {
+                log.warn("메일함 생성 실패 (부팅 시 동기화에서 다시 시도): {}", iamId, mailError);
+            }
             log.info("IAM 계정 발급 완료: {} → {} (keycloak={})", req.employeeNo(), iamId, keycloakUserId);
         } catch (ResponseStatusException e) {
             repository.markFailed(req.employeeNo(), e.getReason());

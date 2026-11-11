@@ -1,7 +1,7 @@
 # PMart 직원 IAM 검증 환경
 # 실행: docker compose up -d --build
-# 외부(호스트)에 공개하는 포트는 Gateway(8080)와 인사팀 백오피스(3000)뿐입니다.
-# Keycloak, PostgreSQL, 각 Spring Boot 서비스는 내부 네트워크에서만 접근합니다.
+# 외부(호스트)에 공개하는 포트는 Gateway(8080), 인사팀 백오피스(3000), 웹메일(8088)뿐입니다.
+# Keycloak, PostgreSQL, 메일 서버(SMTP·IMAP), 각 Spring Boot 서비스는 내부 네트워크에서만 접근합니다.
 
 name: pmart-iam
 
@@ -13,6 +13,7 @@ services:
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
       EMPLOYEE_DB_PASSWORD: ${EMPLOYEE_DB_PASSWORD}
       EMPLOYEE_AUTH_DB_PASSWORD: ${EMPLOYEE_AUTH_DB_PASSWORD}
+      ROUNDCUBE_DB_PASSWORD: ${ROUNDCUBE_DB_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql
       - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
@@ -46,12 +47,21 @@ services:
       EMPLOYEE_AUTH_CLIENT_SECRET: ${EMPLOYEE_AUTH_CLIENT_SECRET}
       EMPLOYEE_AUTH_BOOTSTRAP_CLIENT_SECRET: ${EMPLOYEE_AUTH_BOOTSTRAP_CLIENT_SECRET}
       EMPLOYEE_SERVICE_CLIENT_SECRET: ${EMPLOYEE_SERVICE_CLIENT_SECRET}
+      WEBMAIL_ORIGIN: ${WEBMAIL_ORIGIN}
+      WEBMAIL_CLIENT_SECRET: ${WEBMAIL_CLIENT_SECRET}
+      MAIL_NOREPLY_PASSWORD: ${MAIL_NOREPLY_PASSWORD}
+      IAM_DOMAIN: ${IAM_DOMAIN}
+      # 메일 서버(STARTTLS) 인증서를 발급한 내부 CA 신뢰 (SMTP 발송용)
+      KC_TRUSTSTORE_PATHS: /certs/ca.crt
     volumes:
       - ./infra/keycloak/import:/opt/keycloak/data/import:ro
+      - mail-certs:/certs:ro
     # ports 없음: Keycloak은 Gateway 뒷단에 두며 외부에 공개하지 않음
     depends_on:
       postgres:
         condition: service_healthy
+      mail-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /iam/health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
       interval: 10s
@@ -66,11 +76,16 @@ services:
       EMPLOYEE_SERVICE_CLIENT_SECRET: ${EMPLOYEE_SERVICE_CLIENT_SECRET}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
       IAM_DOMAIN: ${IAM_DOMAIN}
+    volumes:
+      # 직원 메일함 생성: 메일 서버 계정 파일에 IAM 계정을 추가 (D22)
+      - mail-config:/mail-config
     depends_on:
       postgres:
         condition: service_healthy
       keycloak:
         condition: service_healthy
+      mail-init:
+        condition: service_completed_successfully
     healthcheck: &spring-health
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/actuator/health | grep -q UP"]
       interval: 10s
@@ -139,5 +154,83 @@ services:
     depends_on:
       - gateway
 
+  # ---- LAN 메일 (11단계, D22) ----
+  mail-init:
+    image: alpine:3.22.8
+    command: ["sh", "/init/init.sh"]
+    environment:
+      MAIL_DOMAIN: ${IAM_DOMAIN}
+      MAIL_NOREPLY_PASSWORD: ${MAIL_NOREPLY_PASSWORD}
+    volumes:
+      - ./infra/mail:/init:ro
+      - mail-certs:/certs
+      - mail-config:/mail-config
+
+  mailserver:
+    image: mailserver/docker-mailserver:16.0.1
+    hostname: mail.${IAM_DOMAIN}
+    environment:
+      # SMTP·IMAP 로그인을 Keycloak 토큰(OAuth2)으로 검증. userinfo는 서버 간 호출(Gateway 경유 안 함)
+      ENABLE_OAUTH2: "1"
+      OAUTH2_INTROSPECTION_URL: http://keycloak:8080/iam/realms/pmart-employees/protocol/openid-connect/userinfo
+      # STARTTLS: 내부 CA가 발급한 인증서
+      SSL_TYPE: manual
+      SSL_CERT_PATH: /certs/mail.crt
+      SSL_KEY_PATH: /certs/mail.key
+      # 로그인한 계정과 보내는 사람 주소가 다르면 거부
+      SPOOF_PROTECTION: "1"
+      # 실습 범위 밖 기능 끔 (스팸·DKIM·DMARC·SPF 등)
+      ENABLE_AMAVIS: "0"
+      ENABLE_OPENDKIM: "0"
+      ENABLE_OPENDMARC: "0"
+      ENABLE_POLICYD_SPF: "0"
+      ENABLE_SPAMASSASSIN: "0"
+      ENABLE_CLAMAV: "0"
+      ENABLE_FAIL2BAN: "0"
+      LOG_LEVEL: info
+    volumes:
+      - mail-config:/tmp/docker-mailserver
+      - mail-certs:/certs:ro
+      - mail-data:/var/mail
+      - mail-state:/var/mail-state
+    # ports 없음: SMTP·IMAP은 내부 전용. 직원은 웹메일(Roundcube)로 사용
+    depends_on:
+      mail-init:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q ':143 ' && ss -ltn | grep -q ':587 '"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  roundcube:
+    image: roundcube/roundcubemail:1.7.5-apache
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: pgsql
+      ROUNDCUBEMAIL_DB_HOST: postgres
+      ROUNDCUBEMAIL_DB_NAME: roundcube
+      ROUNDCUBEMAIL_DB_USER: roundcube
+      ROUNDCUBEMAIL_DB_PASSWORD: ${ROUNDCUBE_DB_PASSWORD}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL}
+      WEBMAIL_CLIENT_SECRET: ${WEBMAIL_CLIENT_SECRET}
+      IAM_DOMAIN: ${IAM_DOMAIN}
+    volumes:
+      - ./infra/roundcube/config:/var/roundcube/config:ro
+      - mail-certs:/certs:ro
+    ports:
+      - "8088:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailserver:
+        condition: service_healthy
+
 volumes:
   postgres-data:
+  mail-certs:
+  mail-config:
+  mail-data:
+  mail-state:

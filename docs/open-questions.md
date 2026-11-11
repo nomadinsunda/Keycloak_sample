@@ -13,5 +13,5 @@
 | 7 | 세 Auth Service의 JWKS | JWKS 엔드포인트 구현, 공개키 로딩·캐싱·회전, Gateway·MSA 허용 발급자 설정 | [04](architecture/04-tokens-and-jwt.md) | 미결정 |
 | 8 | Resource Server Starter 필요성 | 서비스별 `SecurityFilterChain`, `JwtDecoder`, `dependencyInsight`로 판단. 이름만 보고 제거하지 않음 | [04](architecture/04-tokens-and-jwt.md) | 검증 필요 |
 | 9 | Keycloak Realm JSON | 최초 Import의 Client Secret, 역할, 서비스 계정 권한, Keycloak 버전 호환성 | [keycloak-setup](infrastructure/keycloak-setup.md) | 검증 필요 |
-| 10 | 메일 실습 | Docker Mailserver·Roundcube 버전 고정, LAN DNS, TLS 신뢰, 메일 계정 생성 자동화, Keycloak SMTP 연결 | [lan-mail](infrastructure/lan-mail.md) | 검증 필요 |
+| 10 | 메일 실습 | 구현·검증 완료 (D22). 남은 것: 메일 서버 계정 프로비저닝을 공유 파일 대신 정식 방식(SCIM 등)으로, LAN의 다른 PC에서 접속하려면 내부 DNS·CA 배포 필요 | [lan-mail](infrastructure/lan-mail.md) | 결정됨 |
 | 11 | 직원 권한 정책 | Keycloak 역할과 PMart 업무 권한의 경계, MFC 단위 접근 통제, 계정·권한 변경 이벤트 처리 | [06](architecture/06-employee-provisioning.md) | 미결정 |

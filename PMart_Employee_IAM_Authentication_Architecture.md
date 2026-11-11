@@ -523,6 +523,8 @@ services:
 
 ## 11. 로컬 LAN 직원 이메일 실습 구성
 
+> **구현 결과 (2026-11-12, D22)**: Docker Mailserver 16.0.1 + Roundcube 1.7.5를 Compose로 실행. 직원은 **IAM 계정(Keycloak)으로 웹메일에 SSO 로그인**하며, Roundcube가 Keycloak 토큰으로 IMAP·SMTP에 OAuth(XOAUTH2/OAUTHBEARER) 로그인하고 Dovecot이 Keycloak userinfo로 검증. IAM 계정 ID가 메일 주소이고 직원 등록 시 메일함 생성. 상세는 `docs/infrastructure/lan-mail.md`. 아래는 설계 당시 내용.
+
 ### 11.1 도입 목적 — 실습 범위
 
 - 외부 인터넷 메일 송수신이 아닌 **LAN 내부 직원 간 이메일 송수신**

@@ -1,0 +1,4 @@
+# LAN 메일 실습용: pmart.test 이외의 도메인으로는 절대 발송하지 않음
+# (실제 인터넷 도메인으로 메일이 새 나가는 것을 막기 위함)
+default_transport = error:PMart LAN test - external mail is disabled
+relay_transport = error:PMart LAN test - external mail is disabled

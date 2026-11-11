@@ -16,3 +16,4 @@ SQL
 create_db keycloak      keycloak      "$KEYCLOAK_DB_PASSWORD"
 create_db employee      employee      "$EMPLOYEE_DB_PASSWORD"
 create_db employee_auth employee_auth "$EMPLOYEE_AUTH_DB_PASSWORD"
+create_db roundcube     roundcube     "$ROUNDCUBE_DB_PASSWORD"

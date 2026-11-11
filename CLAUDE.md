@@ -22,7 +22,7 @@
 
 - **PMart**: 국비 훈련생 교육용 MSA 커머스 프로젝트 (이 저장소는 그 Keycloak 적용 검증용)
 - **검증 범위**: PMart **직원(Employee) IAM 및 인증** — Keycloak 기반 직원 로그인, Employee Auth Service의 자체 JWT 발급, Keycloak 계정 프로비저닝, LAN 메일 실습 환경
-- **현재 상태**: 0~10단계 구현·검증 완료 (Keycloak, Gateway, Employee Auth/Employee Service, 샘플 API, 인사팀 백오피스, Refresh Token·퇴사 처리, Flutter 앱). 남은 단계는 LAN 메일. 상세는 [`docs/verification-log.md`](docs/verification-log.md) (2026-11-11 기준)
+- **현재 상태**: 0~11단계 구현·검증 완료 (Keycloak, Gateway, Employee Auth/Employee Service, 샘플 API, 인사팀 백오피스, Refresh Token·퇴사 처리, Flutter 앱, LAN 메일·웹메일 SSO). 상세는 [`docs/verification-log.md`](docs/verification-log.md) (2026-11-11 기준)
 - **원본 설계 기록**: [`PMart_Employee_IAM_Authentication_Architecture.md`](PMart_Employee_IAM_Authentication_Architecture.md) — 주제별 정리본은 [`docs/`](docs/README.md)에 있습니다. 두 곳이 충돌하면 원본을 우선하고, 정리본을 고칩니다.
 
 ## 기술 스택 (설계 기준)
@@ -100,6 +100,14 @@
 - 클레임은 `iss`, `sub`(사번), `aud`, `iat`, `exp`, `jti`, `user_type`(`EMPLOYEE`), `roles`, `identity_provider`, `external_subject`(Keycloak UUID)입니다. 개인정보는 넣지 않습니다.
 - 테스트 범위의 역할은 `EMPLOYEE`, `HR_ADMIN`이고, `aud` 값은 `pmart-employee-auth`, `pmart-employee-service`, `pmart-sample-api`입니다.
 - 상세 형식과 검증 규칙은 [`docs/architecture/04-tokens-and-jwt.md`](docs/architecture/04-tokens-and-jwt.md)에 있습니다.
+
+## LAN 메일 — 확정 (D22)
+
+- Docker Mailserver(SMTP·IMAP)와 Roundcube(웹메일, 포트 8088)도 Compose로 실행합니다. SMTP·IMAP 포트는 외부에 공개하지 않습니다.
+- **IAM 계정 ID = 메일 주소**이고, 직원은 **IAM 계정(Keycloak)으로 웹메일에 로그인**합니다. Roundcube는 Keycloak Client `pmart-webmail`이며, 받은 토큰으로 IMAP·SMTP에 OAuth 로그인합니다. Dovecot은 그 토큰을 Keycloak userinfo로 검증합니다(내부 직접 호출).
+- 직원 등록·Employee Service 부팅 시 메일함을 만듭니다(공유 볼륨의 메일 서버 계정 파일에 추가).
+- 내부 CA 인증서로 STARTTLS를 쓰고 인증서 검증을 끄지 않습니다. `pmart.test` 외 도메인으로는 발송하지 않습니다.
+- Keycloak은 `noreply@pmart.test`로 SMTP 메일을 보냅니다. 상세는 [`docs/infrastructure/lan-mail.md`](docs/infrastructure/lan-mail.md).
 
 ## IAM 계정 — 확정 (D21)
 
@@ -227,6 +235,8 @@ services/employee-service/       Employee Service (직원 정보, Keycloak 계�
 services/sample-api/             샘플 업무 API (PMart JWT 검증 확인용)
 apps/hr-backoffice/              인사팀 백오피스 React SPA (Nginx) — 외부 포트 3000
 apps/employee_mobile/            직원 Flutter 앱 (Compose 밖, 에뮬레이터·실기기에서 실행)
+infra/mail/                      메일 초기 준비 스크립트(내부 CA·noreply 계정), 외부 발송 차단 설정
+infra/roundcube/config/          Roundcube ↔ Keycloak OAuth 설정
 scripts/e2e-test.sh              통합 검증 스크립트
 docs/verification-log.md         검증 기록 (이 프로젝트의 핵심 결과물)
 ```
@@ -242,7 +252,7 @@ docker compose down               # 중지 (DB 유지)
 docker compose down -v            # 중지 + DB 삭제 (Realm·테스트 계정이 다시 생성됨)
 ```
 
-- 백오피스: http://localhost:3000 — 테스트 계정은 `.env`의 `HR_TEST_IAM_ID` / `HR_TEST_PASSWORD`
+- 백오피스: http://localhost:3000, 웹메일: http://localhost:8088 — 테스트 계정은 `.env`의 `HR_TEST_IAM_ID` / `HR_TEST_PASSWORD`
 - 서비스 하나만 다시 빌드: `docker compose up -d --build employee-auth`
 - 로컬 컴파일 확인: `cd services/<서비스> && ./gradlew compileJava`
 - 백오피스 개발 서버: `cd apps/hr-backoffice && npm run dev` (포트 3000, Gateway는 Compose로 실행)

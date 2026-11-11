@@ -184,8 +184,62 @@ Keycloak을 사용하는 목적은 **직원 IAM 계정 발급**이다. 이전 �
 - 수정: `node -e ... -- "$verifier"`. `-`로 시작하는 verifier를 강제로 쓰게 한 실행과 일반 실행 3회 모두 73개 통과
 - 서버·Keycloak 문제가 아니었음. "Keycloak 이벤트 로그를 켜고 다시 확인해야 함"이라는 이전 기록은 취소
 
+## 2026-11-12 — 11단계 LAN 메일 · IAM 계정으로 웹메일 SSO (D22)
+
+### 사용 버전
+
+| 구성 요소 | 버전 |
+|---|---|
+| Docker Mailserver | 16.0.1 (Postfix + Dovecot). 6일 전 나온 v17.0.0은 제외 |
+| Roundcube | 1.7.5-apache (PKCE S256 기본, ID Token JWKS 검증 지원). 2일 전 나온 1.7.6은 제외 |
+| mail-init | alpine 3.22.8 + openssl |
+
+### 결과 요약
+
+- `scripts/e2e-test.sh`: **85개 항목 통과**(메일 12개 추가), 연속 2회
+- Chrome 수동 확인: `http://localhost:8088` → Keycloak 로그인(IAM 계정) → Roundcube 받은편지함 표시 → 메일 작성·발송 → 받은편지함 도착. Postfix 로그에 `sasl_method=OAUTHBEARER, sasl_username=hr.admin@pmart.test`
+
+| 검증 항목 | 결과 |
+|---|---|
+| 직원 등록 → 메일함 생성 / 부팅 시 기존 직원 메일함 동기화 | 동작 |
+| 웹메일 Client로 Keycloak 토큰 발급 → IMAP 로그인(OAUTHBEARER·XOAUTH2) | 동작 |
+| 위조 토큰, 남의 토큰으로 다른 메일함 로그인 | 거부 |
+| TLS 없는 평문 로그인(다른 컨테이너에서) | 거부 (`LOGINDISABLED`) |
+| SMTP 발송(토큰) → 받는 사람 메일함 배달 | 동작 |
+| 보내는 사람 사칭 | 거부 |
+| 외부 도메인(gmail.com) 발송 | 반송 (`external mail is disabled`) |
+| Keycloak SMTP 발송(`noreply@pmart.test`, 내부 CA 신뢰) → 메일함 도착 | 동작 |
+| 퇴사자 웹메일 토큰 발급 | 불가 (Keycloak 계정 비활성화) |
+
+### 설계에 없던 것을 구현하며 정한 것
+
+| 항목 | 정한 내용 | 이유 |
+|---|---|---|
+| 웹메일 OIDC Client | `pmart-webmail` (Confidential, PKCE S256) | 확정 원칙 D3(직원 앱·Gateway는 Keycloak Client가 아님)은 PMart 직원 앱 대상. 웹메일은 IAM 계정을 쓰는 별도 애플리케이션이라 자체 Client가 필요 |
+| 메일함 프로비저닝 | 공유 볼륨의 메일 서버 계정 파일에 Employee Service가 직접 추가 | Docker Mailserver는 SCIM 등 프로비저닝 API가 없음(문서에 계획만 있음). 테스트 프로젝트용 단순 방식 |
+| 메일 계정 비밀번호 | 무작위 값의 SHA512-CRYPT 해시 | 메일 로그인은 토큰으로만. 파일 비밀번호로는 아무도 로그인 못 하게 |
+| 기존 환경 반영 | Realm JSON에 Client·SMTP 추가 + 실행 중인 Keycloak에는 `kcadm`으로 동일하게 적용, Roundcube DB는 `psql`로 생성 | Realm Import와 DB 초기화 스크립트는 최초 생성 때만 실행되므로 |
+
+### 알게 된 점
+
+1. **Dovecot의 로컬 접속 예외**: 메일 서버 컨테이너 안에서 자기 자신에게 평문으로 접속하면 Dovecot이 안전한 연결로 보고 로그인을 허용함. 다른 컨테이너(실제 경로)에서는 `LOGINDISABLED`로 막힘. 평문 차단 검증은 반드시 다른 컨테이너에서 해야 함.
+2. **인증서 이름 검증**: `imap://localhost`로 접속하면 인증서 SAN(`mailserver`, `mail.pmart.test`)과 맞지 않아 TLS 단계에서 끊김. 인증서 검증이 제대로 동작한다는 뜻이며, 접속 주소를 SAN과 맞춰야 함.
+3. **Keycloak Access Token 5분**: 저장해 둔 토큰으로 몇 분 뒤 IMAP을 조회하면 실패함(userinfo 검증 실패). Roundcube는 Refresh Token으로 자동 갱신함.
+4. **Git Bash `MSYS_NO_PATHCONV`의 부작용**: 컨테이너 경로 변환을 막으려고 전역으로 `export`하면 curl 쿠키 파일 경로(`/tmp/...`)까지 Windows 경로로 바뀌지 않아 Keycloak 로그인이 `cookie_not_found`로 실패함. docker 명령에만 붙여야 함.
+5. **`set -o pipefail`과 실패가 정상인 명령**: 평문 로그인 거부처럼 curl이 실패 코드를 내는 것이 정상인 검사는 파이프라인 대신 출력을 변수에 담아 검사해야 함.
+
+### 새 환경 검증 (2026-11-12, `docker compose down -v` 후 `up`)
+
+- Realm Import로 `pmart-webmail` Client와 `smtpServer`(환경변수 치환 포함)가 생성됨. DB 초기화 스크립트로 `roundcube` DB 생성, Roundcube가 첫 기동 때 테이블 생성
+- **처음 실행 결과: 83 통과 / 2 실패** — IMAP OAUTHBEARER·XOAUTH2 로그인 실패. Dovecot 로그: `userdb-default: unknown user`(토큰 검증은 통과했지만 메일함 없음)
+  - 원인: **부팅 순서 경쟁**. Employee Service의 부팅 동기화(`MailboxSync`)가 21:45:34에 끝난 뒤(직원 0명), Employee Auth Service가 21:45:51에 테스트용 인사팀 계정을 내부 API(`PUT /internal/employees/{사번}`)로 등록함. 이 내부 API는 메일함을 만들지 않았으므로 `hr.admin@pmart.test` 메일함이 생기지 않음
+  - 기존 환경에서 통과했던 이유: 직원 DB에 인사팀 계정이 이미 있어 부팅 동기화가 메일함을 만들었기 때문. 실행 중인 환경에만 반영하고 검증하면 이런 순서 문제를 놓침
+  - 수정: 내부 upsert API에서도 재직(`ACTIVE`) 직원의 메일함을 만들도록 함(`InternalEmployeeController`)
+- **수정 후: 85개 항목 통과**, 연속 2회
+- 참고: `kcadm.sh get realms/... --fields smtpServer`는 중첩 객체를 `{ }`로 보여 줌. 설정이 비어 보여도 `--fields` 없이 전체를 조회해 확인해야 함
+
 ### 남은 단계
 
-- 11단계 LAN 메일
-- 11단계 LAN 메일
+- 없음 (0~11단계 완료)
 - 자동화 테스트(JUnit, Testcontainers) 추가. Initializr가 만든 기본 테스트(`contextLoads`)는 DB 없이 실패하므로 삭제한 상태
+- 운영 수준 항목(App Link, 키 관리, 메일 프로비저닝 정식화)은 [open-questions.md](open-questions.md) 참고

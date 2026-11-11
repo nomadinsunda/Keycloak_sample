@@ -10,6 +10,9 @@ spring:
     password: ${EMPLOYEE_DB_PASSWORD}
 
 pmart:
+  mail:
+    # 메일 서버 계정 파일 (공유 볼륨). 비어 있으면 메일함 생성 안 함
+    accounts-file: ${MAIL_ACCOUNTS_FILE:/mail-config/postfix-accounts.cf}
   iam:
     # IAM 계정 ID = 계정명@도메인 (Keycloak 로그인 ID이자 이메일)
     domain: ${IAM_DOMAIN:pmart.test}

@@ -206,6 +206,52 @@ MRT3=$(json_field refreshToken < "$WORK/resp.json")
 check "앱 로그아웃" 204 "$(post_json /employee-auth/mobile/logout "{\"refreshToken\":\"$MRT3\"}")"
 check "앱 로그아웃 후 갱신" 401 "$(post_json /employee-auth/mobile/refresh "{\"refreshToken\":\"$MRT3\"}")"
 
+echo "== 14. LAN 메일 (Keycloak 토큰으로 SMTP·IMAP 로그인, D22) =="
+# Git Bash가 컨테이너 안 경로(/certs 등)를 Windows 경로로 바꾸지 않게 docker 명령에만 적용
+# (전역 export하면 curl 쿠키 파일 경로까지 변환되지 않아 Keycloak 로그인이 cookie_not_found로 실패함)
+dc() { MSYS_NO_PATHCONV=1 docker compose exec -T "$@"; }
+# 직원 등록 시 메일함 생성: 메일 서버가 계정 파일 변경을 감지할 때까지 최대 20초 대기
+for i in $(seq 1 10); do dc mailserver doveadm user "$EMP_IAM" >/dev/null 2>&1 && break; sleep 2; done
+dc mailserver doveadm user "$EMP_IAM" >/dev/null 2>&1 && ok "직원 등록 → 메일함 생성 ($EMP_IAM)" || fail "등록한 직원의 메일함이 없음"
+
+# 웹메일 Client(pmart-webmail)로 Keycloak 로그인해 Access Token 받기 (Roundcube가 하는 일과 같음)
+webmail_token() { # $1=IAM 계정 ID $2=비밀번호
+  local jar="$WORK/wm-$RANDOM.jar" red="$WEBMAIL_ORIGIN/index.php/login/oauth" v c act loc code
+  v=$(rand); c=$(node -e 'console.log(require("crypto").createHash("sha256").update(process.argv[1]).digest("base64url"))' -- "$v")
+  act=$(curl -s -c "$jar" -b "$jar" "$GW/iam/realms/pmart-employees/protocol/openid-connect/auth?response_type=code&client_id=pmart-webmail&scope=openid%20email%20profile&redirect_uri=$(node -e 'console.log(encodeURIComponent(process.argv[1]))' -- "$red")&code_challenge=$c&code_challenge_method=S256&state=s" \
+    | grep -o 'id="kc-form-login"[^>]*action="[^"]*"' | sed 's/.*action="//; s/"$//; s/&amp;/\&/g')
+  loc=$(curl -s -c "$jar" -b "$jar" -o /dev/null -w '%{redirect_url}' --data-urlencode "username=$1" --data-urlencode "password=$2" "$act")
+  code=$(echo "$loc" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')
+  [ -z "$code" ] && return 0
+  dc roundcube curl -s -u "pmart-webmail:$WEBMAIL_CLIENT_SECRET" -d grant_type=authorization_code -d "code=$code" \
+    --data-urlencode "redirect_uri=$red" -d "code_verifier=$v" http://keycloak:8080/iam/realms/pmart-employees/protocol/openid-connect/token \
+    | json_field access_token
+}
+# Roundcube 컨테이너에서 메일 서버로 접속 (실제 웹메일과 같은 경로, STARTTLS + 내부 CA 검증)
+imap_login() { dc roundcube curl -s --url 'imap://mailserver:143' --ssl-reqd --cacert /certs/ca.crt --login-options "AUTH=$1" --user "$2" --oauth2-bearer "$3" --request LOGOUT >/dev/null 2>&1; }
+WM_TOKEN=$(webmail_token "$HR_TEST_IAM_ID" "$HR_TEST_PASSWORD")
+[ -n "$WM_TOKEN" ] && ok "웹메일 Client로 Keycloak 토큰 발급" || fail "웹메일 토큰 발급 실패"
+imap_login OAUTHBEARER "$HR_TEST_IAM_ID" "$WM_TOKEN" && ok "IMAP 로그인 (OAUTHBEARER, Keycloak 토큰)" || fail "IMAP OAUTHBEARER 로그인 실패"
+imap_login XOAUTH2 "$HR_TEST_IAM_ID" "$WM_TOKEN" && ok "IMAP 로그인 (XOAUTH2, Keycloak 토큰)" || fail "IMAP XOAUTH2 로그인 실패"
+imap_login XOAUTH2 "$HR_TEST_IAM_ID" "forged-token" && fail "위조 토큰으로 IMAP 로그인됨" || ok "위조 토큰 IMAP 로그인 거부"
+imap_login XOAUTH2 "$EMP_IAM" "$WM_TOKEN" && fail "남의 토큰으로 다른 메일함 로그인됨" || ok "내 토큰으로 다른 사람 메일함 로그인 거부"
+# 평문 접속은 로그인이 거부되어 curl이 실패 코드를 내므로, pipefail에 걸리지 않게 출력을 먼저 변수에 담음
+PLAIN=$(dc roundcube curl -sv --url 'imap://mailserver:143' --login-options AUTH=XOAUTH2 --user "$HR_TEST_IAM_ID" --oauth2-bearer "$WM_TOKEN" --request LOGOUT 2>&1 || true)
+if echo "$PLAIN" | grep -q "LOGINDISABLED" && ! echo "$PLAIN" | grep -q "OK Logged in"; then
+  ok "TLS 없는 평문 로그인 차단 (LOGINDISABLED)"; else fail "평문 로그인이 허용됨"; fi
+
+MSGID="pmart-e2e-$RANDOM$RANDOM"
+printf 'From: %s\r\nTo: %s\r\nSubject: e2e %s\r\n\r\nLAN mail test\r\n' "$HR_TEST_IAM_ID" "$EMP_IAM" "$MSGID" > "$WORK/mail.eml"
+MSYS_NO_PATHCONV=1 docker compose cp "$(cygpath -w "$WORK/mail.eml")" roundcube:/tmp/e2e.eml >/dev/null 2>&1
+smtp_send() { dc roundcube curl -s --url 'smtp://mailserver:587' --ssl-reqd --cacert /certs/ca.crt --login-options AUTH=XOAUTH2 --user "$HR_TEST_IAM_ID" --oauth2-bearer "$WM_TOKEN" --mail-from "$1" --mail-rcpt "$2" --upload-file /tmp/e2e.eml >/dev/null 2>&1; }
+smtp_send "$HR_TEST_IAM_ID" "$EMP_IAM" && ok "SMTP 발송 (XOAUTH2, Keycloak 토큰)" || fail "SMTP 발송 실패"
+for i in $(seq 1 10); do dc mailserver doveadm search -u "$EMP_IAM" mailbox INBOX subject "$MSGID" 2>/dev/null | grep -q . && break; sleep 1; done
+dc mailserver doveadm search -u "$EMP_IAM" mailbox INBOX subject "$MSGID" 2>/dev/null | grep -q . && ok "받는 사람 메일함에 배달" || fail "메일이 배달되지 않음"
+smtp_send "$EMP_IAM" "$HR_TEST_IAM_ID" && fail "다른 사람 주소로 사칭 발송됨" || ok "보내는 사람 사칭 거부"
+smtp_send "$HR_TEST_IAM_ID" "someone@gmail.com"
+sleep 2; docker compose logs --since 30s mailserver 2>&1 | grep -q "someone@gmail.com.*external mail is disabled" && ok "외부 도메인 발송 차단 (반송)" || fail "외부 발송 차단 확인 실패"
+check "퇴사자는 웹메일 토큰 발급 불가 (Keycloak 계정 비활성화)" "" "$(webmail_token "$EMP_IAM" "New-Pass-5678")"
+
 echo "== 13. 로그아웃 =="
 XSRF=$(csrf_token "$HR")
 logout=$(curl -s -D "$WORK/logout.h" -b "$HR" -c "$HR" -X POST -H "Origin: $ORIGIN" -H "X-XSRF-TOKEN: $XSRF" "$GW/employee-auth/logout")

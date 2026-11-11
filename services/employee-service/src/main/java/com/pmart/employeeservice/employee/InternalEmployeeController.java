@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.pmart.employeeservice.mail.MailboxProvisioner;
+
 /**
  * 서비스 간 내부 API (Employee Auth Service 전용).
  * Gateway 라우트가 없으므로 외부에서 접근할 수 없고, 내부 API 키로 보호합니다.
@@ -23,9 +25,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class InternalEmployeeController {
 
     private final EmployeeRepository repository;
+    private final MailboxProvisioner mailboxes;
 
-    public InternalEmployeeController(EmployeeRepository repository) {
+    public InternalEmployeeController(EmployeeRepository repository, MailboxProvisioner mailboxes) {
         this.repository = repository;
+        this.mailboxes = mailboxes;
     }
 
     /** 로그인 시 Employee Auth Service가 Keycloak sub로 직원 상태·역할을 확인 */
@@ -43,6 +47,11 @@ public class InternalEmployeeController {
         repository.upsertPending(employeeNo, req.iamId(), req.firstName(), req.lastName(), req.department(),
                 req.status(), String.join(",", req.roles()));
         repository.markCompleted(employeeNo, req.keycloakUserId());
+        // 메일함도 여기서 만듭니다(D22). 새 환경에서는 Employee Service의 부팅 동기화(MailboxSync)가
+        // 이 등록보다 먼저 끝나므로, 동기화에만 맡기면 테스트용 인사팀 계정에 메일함이 생기지 않습니다.
+        if ("ACTIVE".equals(req.status())) {
+            mailboxes.ensureMailbox(req.iamId());
+        }
         return new EmployeeStatus(employeeNo, req.iamId(), req.firstName(), req.lastName(), req.status(), req.roles());
     }
 
