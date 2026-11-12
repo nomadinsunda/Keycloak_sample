@@ -28,6 +28,7 @@
 | D20 | Flutter 앱: 시스템 브라우저(Custom Tabs) 로그인, **커스텀 스킴 `pmart-employee://login-callback`**으로 복귀(LAN 환경이라 App Link 대신), 일회성 ticket(60초, 단일 사용, 해시 저장)을 앱의 `app_verifier`(S256)에 결속, 토큰은 `/employee-auth/mobile/**`에서 JSON으로 교환·갱신(쿠키·CSRF 없음), 기기 보안 저장소 보관, 앱 로그인 직후 Keycloak 세션 종료(2026-11-11 수정: 처음엔 `prompt=login`이었으나 아이디 칸이 이전 계정으로 고정되는 문제로 변경) | 확정 |
 | D21 | **Keycloak은 직원 IAM 계정을 발급**한다. IAM 계정 ID = `계정명@pmart.test`(인사팀이 계정명 입력, 형식·중복 검사) = Keycloak 로그인 ID(username) = Keycloak 이메일. **사번은 인사 정보로만 사용**(직원 DB, PMart JWT `sub`). 직원 로그인은 IAM 계정 ID + 비밀번호. 도메인은 `IAM_DOMAIN` 환경변수 | 확정 |
 | D22 | LAN 메일: Docker Mailserver 16.0.1(SMTP·IMAP) + Roundcube 1.7.5를 Compose로 실행. **IAM 계정으로 웹메일 SSO**: Roundcube는 Keycloak Client `pmart-webmail`(OIDC+PKCE), 받은 토큰으로 IMAP·SMTP에 XOAUTH2/OAUTHBEARER 로그인, Dovecot이 Keycloak userinfo로 검증. IAM 계정 ID = 메일 주소, 직원 등록·부팅 시 메일함 생성. 내부 CA로 STARTTLS, 외부 발송 차단 | 확정 |
+| D23 | **모든 Keycloak Client의 Full Scope Allowed OFF** (Keycloak 26에서 deprecated된 스위치, 기본값 ON이라 명시). Admin API용 Client(`pmart-employee-service`, `pmart-employee-auth-bootstrap`)는 **Service Account 역할 매핑과 Client Role Scope Mapping 모두 `realm-management`의 `manage-users`만**(이전: 역할 매핑 `manage-users`·`view-users`·`query-users` + Full Scope). 로그인용 Client(`pmart-employee-auth`, `pmart-webmail`)는 Scope Mapping 없음. 근거: Keycloak 26.8.1에서 기준선 → 3개 역할 명시 → OFF → `manage-users`만으로 축소하며 Admin API 작업별 확인, 새 환경(`down -v`) 재현, e2e 85개·자동화 테스트 96개 통과 (2026-11-12) | 확정 |
 
 ## 채택하지 않은 대안
 

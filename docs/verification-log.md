@@ -45,7 +45,7 @@
 
 | 항목 | 정한 내용 | 이유 |
 |---|---|---|
-| 부트스트랩용 Keycloak Client | `pmart-employee-auth-bootstrap` (Client Credentials, `manage-users`·`view-users`·`query-users`) | Employee Auth Service가 테스트 계정을 만들려면 Admin API 권한이 필요. 로그인용 Client `pmart-employee-auth`의 Service Accounts는 OFF 유지 |
+| 부트스트랩용 Keycloak Client | `pmart-employee-auth-bootstrap` (Client Credentials, `manage-users`·`view-users`·`query-users`. 2026-11-12 D23으로 `manage-users`만으로 축소) | Employee Auth Service가 테스트 계정을 만들려면 Admin API 권한이 필요. 로그인용 Client `pmart-employee-auth`의 Service Accounts는 OFF 유지 |
 | 직원 정보 조회 | Employee Service 내부 API `/internal/employees/**` + 내부 API 키(`X-Internal-Api-Key`) | Employee Auth Service가 로그인 시 재직 상태·역할을 확인해야 함. Gateway 라우트가 없어 외부 접근 불가. **테스트 프로젝트용 단순 방식** |
 | 역할 저장 위치 | Employee Service DB (`EMPLOYEE`, `HR_ADMIN`) | Keycloak에는 역할을 두지 않음. PMart 권한은 PMart가 관리 |
 | PMart JWT `aud` | `pmart-employee-auth`를 추가 | `/employee-auth/me`도 PMart JWT로 보호하기 때문 |
@@ -297,3 +297,32 @@ Keycloak을 사용하는 목적은 **직원 IAM 계정 발급**이다. 이전 �
 - Flutter 앱(`apps/employee_mobile`)과 백오피스(`apps/hr-backoffice`)의 자동화 테스트는 없음. 수동 확인과 `scripts/e2e-test.sh`로 검증
 - 로그인 Callback(`AuthController`의 `state`·`nonce`·ID Token 검증)은 Keycloak이 필요해 단위 테스트 없이 e2e 테스트로만 확인
 
+## 2026-11-12 — Keycloak Full Scope Allowed 끄기 · 관리 권한 최소화 (D23)
+
+### 계기
+
+Keycloak 26.8.1은 토큰을 발급할 때마다 우리 Client 4개 모두에 대해 경고를 남기고 있었음: `Client '...' has 'Full scope allowed' switch enabled. This client switch is deprecated and will be removed in the future.` Realm JSON에는 `fullScopeAllowed`가 없었고, **새 Client의 기본값이 ON**이라 켜져 있었던 것. 그대로 두면 (1) 스위치가 제거되어 OFF처럼 동작할 때 관리용 토큰에서 `manage-users`가 빠져 직원 등록·퇴사 처리·테스트 계정 생성이 403으로 멈추고, (2) 매핑된 역할이 범위 제한 없이 모두 토큰에 실림(쓰지 않는 `query-groups`까지).
+
+### 진행 순서와 결과 (Employee Service·bootstrap이 쓰는 Admin API 작업을 관리용 토큰으로 직접 호출)
+
+| 단계 | 설정 (역할 매핑 / Scope / fullScopeAllowed) | 토큰의 realm-management 역할 | 조회 | 생성 | 비밀번호 | 비활성화 | 세션 종료 | 그룹 목록 | Client 목록 |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 기준선 | 3개 / 없음 / true | manage·view·query-users, query-groups | 200 | 201 | 204 | 204 | 204 | 200 | 403 |
+| 1 명시 | 3개 / 3개 / **false** | 위와 같음 | 200 | 201 | 204 | 204 | 204 | 200 | 403 |
+| 확인 | 3개 / `query-users` / false | query-users | 200 | **403** | — | — | — | 403 | 403 |
+| 확인 | 3개 / 없음 / false | (없음) | **403** | **403** | — | — | — | 403 | 403 |
+| 2 축소 | **`manage-users`** / **`manage-users`** / false | manage-users | 200 | 201 | 204 | 204 | 204 | 200 | 403 |
+
+- 두 관리용 Client(`pmart-employee-service`, `pmart-employee-auth-bootstrap`) 모두 같은 결과. 토큰 `sub`는 각 Client의 `service-account-user` ID와 일치
+- 로그인용 Client 2개(`pmart-employee-auth`, `pmart-webmail`)는 Scope Mapping 없이 OFF만 적용
+- 실행 중인 환경에 적용 후 e2e **85개 통과**, 경고 0건
+- Realm JSON 반영 후 **새 환경(`docker compose down -v` → `up`)**: Import로 같은 설정 재현(4개 Client 모두 OFF, 관리용 Scope·역할 매핑 `manage-users`만), 부팅 시 테스트용 인사팀 계정 **생성 경로**가 `manage-users`만으로 성공, e2e **85개 통과 연속 2회**, 경고 **0건**, 자동화 테스트 **96개 통과**
+
+### 알게 된 점
+
+1. **Admin REST API는 토큰에 실린 역할로 권한을 판단함**: 역할 매핑에 `manage-users`가 있어도 Scope가 `query-users`뿐이면 사용자 생성이 403. 즉 토큰 역할 = 역할 매핑 ∩ Role Scope Mapping이며, `fullScopeAllowed=false`로 바꿀 때 Scope Mapping을 함께 넣지 않으면 관리 기능이 멈춤
+2. **`manage-users`만으로 사용자 조회까지 됨**: `GET /users?exact=true&username=`가 `view-users`·`query-users` 없이 200. Employee Service가 쓰는 작업 전부가 `manage-users` 하나로 충분
+3. **`manage-users`는 그룹 목록 조회도 허용함**: 토큰에 `query-groups`가 없어도 `GET /groups`가 200. `manage-users`는 신규 계정 생성 전용이 아니라 Realm 전체 사용자에 대한 넓은 권한임. 더 좁히려면 Fine-Grained Admin Permissions가 필요(이 검증 범위 밖)
+4. **`view-users`는 복합 역할**(`query-users` + `query-groups`)이라, 이전 설정에서는 Realm JSON에 없는 `query-groups`가 토큰에 실렸음
+5. **경고는 기동 때가 아니라 토큰 발급 때 남음**(`TokenEndpoint.full-scope-allowed` 로거). 기동 로그만 봐서는 놓칠 수 있음
+6. **Realm JSON의 Client Role Scope Mapping 형식**: 최상위 `"clientScopeMappings": {"realm-management": [{"client": "<clientId>", "roles": [...]}]}` (역할을 가진 Client가 키, 범위를 받는 Client가 `client`)

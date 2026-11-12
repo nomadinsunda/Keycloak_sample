@@ -16,6 +16,11 @@
 |---|---|---|---|
 | `pmart-employee-auth` | 직원 로그인 (Employee Auth Service) | Authorization Code + PKCE(S256) | Confidential / Client Secret |
 | `pmart-employee-service` | Employee Service의 Admin REST API 호출 | Client Credentials | Confidential / 서비스 계정 |
+| `pmart-employee-auth-bootstrap` | Employee Auth Service가 부팅 시 테스트용 인사팀 계정 생성 (검증 프로젝트 전용) | Client Credentials | Confidential / 서비스 계정 |
+| `pmart-webmail` | Roundcube 웹메일 로그인 (D22) | Authorization Code + PKCE(S256) | Confidential / Client Secret |
+
+**모든 Client는 Full Scope Allowed OFF** (확정, D23). Keycloak 26에서 사용 중단(deprecated)된 스위치이고 새 Client의 기본값이 ON이므로 Realm JSON에 `"fullScopeAllowed": false`를 명시합니다. ON이면 사용자·Service Account에 매핑된 역할이 범위 제한 없이 모두 토큰에 실리고, 토큰을 발급할 때마다 경고 로그가 남습니다. 스위치가 제거되면 OFF처럼 동작하므로, 필요한 역할은 Client Role Scope Mapping에 미리 적어 둬야 합니다.
+
 ### `pmart-employee-auth` 권장 설정
 
 | 항목 | 값 |
@@ -26,6 +31,7 @@
 | Implicit Flow | OFF |
 | Direct Access Grants | OFF |
 | Service Accounts | OFF |
+| Full Scope Allowed | OFF (Role Scope Mapping 없음 — ID Token만 검증하고 Keycloak Access Token의 역할은 쓰지 않음) |
 | Authorization (Authorization Services) | OFF |
 | Valid Redirect URIs | Employee Auth Callback URL만 정확히 등록 (예: `https://api.pmart.test/employee-auth/callback`) |
 
@@ -37,7 +43,15 @@
 | Service Accounts | ON |
 | Standard Flow | OFF |
 | Direct Access Grants | OFF |
-| 서비스 계정 역할 | `realm-management`에서 필요한 사용자 관리 권한만 최소 부여 |
+| Full Scope Allowed | OFF |
+| Service Account 역할 매핑 | `realm-management` → `manage-users`만 |
+| Client Role Scope Mapping | `realm-management` → `manage-users`만 |
+
+`pmart-employee-auth-bootstrap`도 같은 설정입니다.
+
+토큰에 실리는 역할은 **Service Account 역할 매핑 ∩ Client Role Scope Mapping**이고, Admin REST API는 토큰의 역할로 권한을 판단합니다(Keycloak 26.8.1에서 확인: 역할 매핑에 `manage-users`가 있어도 Scope가 `query-users`뿐이면 사용자 생성이 403). Employee Service가 쓰는 작업(사용자 조회·생성, 비밀번호 설정, 비활성화, 세션 종료)은 모두 `manage-users`만으로 동작하므로 `view-users`·`query-users`는 주지 않습니다.
+
+참고: `manage-users`는 신규 계정 생성 전용 권한이 아니라 Realm 전체 사용자에 대한 넓은 관리 권한입니다(그룹 목록 조회도 허용됨을 확인). 더 좁히려면 Fine-Grained Admin Permissions가 필요하며 이 검증 범위에서는 다루지 않습니다.
 
 ## 주의
 

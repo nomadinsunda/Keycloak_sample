@@ -102,8 +102,9 @@
 | `pmart-employee-service` | Employee Service의 Keycloak Admin REST API 호출 | Client Credentials | Confidential / 서비스 계정 |
 - 직원 앱이 여러 개여도 **공통 Employee Auth Service가 하나의 OIDC Client Registration**으로 로그인 처리를 중앙화할 수 있습니다.
 - 앱별 별도 Client가 필요한지는 Redirect URI, 보안 정책, 인증 격리 요구에 따라 결정합니다.
-- 직원 로그인 Client 권장 설정: Client Authentication ON, Standard Flow ON, PKCE S256, Implicit OFF, Direct Access Grants OFF, Authorization Services OFF, Service Accounts OFF.
+- 직원 로그인 Client 권장 설정: Client Authentication ON, Standard Flow ON, PKCE S256, Implicit OFF, Direct Access Grants OFF, Authorization Services OFF, Service Accounts OFF, Full Scope Allowed OFF.
 - Admin API용 Client는 별도로 Service Accounts ON 및 최소 관리 권한을 부여합니다.
+- **모든 Client는 Full Scope Allowed를 끕니다** (확정, D23). Keycloak 26에서 사용 중단(deprecated)된 스위치이며 기본값이 ON이므로 명시적으로 꺼야 합니다. Admin API용 Client는 Service Account 역할 매핑과 Client Role Scope Mapping 양쪽에 `realm-management`의 `manage-users`만 둡니다(토큰 역할 = 두 설정의 교집합). Keycloak 26.8.1에서 사용자 조회·생성·비밀번호 설정·비활성화·세션 종료가 `manage-users`만으로 동작함을 확인했습니다.
 - **`Authorization Enabled`는 Authorization Code Flow를 켜는 옵션이 아닙니다.** Keycloak Authorization Services의 리소스·정책 기능이 필요하지 않다면 비활성화합니다.
 
 ---

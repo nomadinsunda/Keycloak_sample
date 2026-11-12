@@ -267,6 +267,7 @@ docker compose down -v            # 중지 + DB 삭제 (Realm·테스트 계정�
 - 하위 서비스(Employee Auth, Employee Service, 샘플 API)는 CSRF·CORS를 끄고 `Authorization: Bearer`만 받습니다.
 - Employee Service·Employee Auth Service의 내부 API(`/internal/**`)는 Gateway 라우트가 없으며 `X-Internal-Api-Key`로 보호합니다.
 - 역할(`EMPLOYEE`, `HR_ADMIN`)은 Employee Service DB에 둡니다. Keycloak에는 역할을 두지 않습니다.
+- Keycloak Client는 모두 `"fullScopeAllowed": false`를 명시합니다(D23. Keycloak 26에서 deprecated, 기본값 ON). Admin API용 Client는 Service Account 역할 매핑과 `clientScopeMappings` 양쪽에 `realm-management`의 `manage-users`만 둡니다. 토큰 역할은 두 설정의 교집합이므로 한쪽만 바꾸면 관리 기능이 403으로 멈춥니다.
 - 설계와 다른 결과나 새로 알게 된 함정은 `docs/verification-log.md`에 기록합니다.
 
 ## 문서 유지 관리

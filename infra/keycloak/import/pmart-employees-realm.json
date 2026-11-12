@@ -33,6 +33,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
       "authorizationServicesEnabled": false,
       "redirectUris": ["${WEBMAIL_ORIGIN}/index.php/login/oauth"],
       "webOrigins": [],
@@ -53,6 +54,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
       "authorizationServicesEnabled": false,
       "redirectUris": ["${PUBLIC_BASE_URL}/employee-auth/callback"],
       "webOrigins": [],
@@ -73,6 +75,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
       "authorizationServicesEnabled": false
     },
     {
@@ -87,6 +90,7 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
       "authorizationServicesEnabled": false
     }
   ],
@@ -96,7 +100,7 @@
       "enabled": true,
       "serviceAccountClientId": "pmart-employee-auth-bootstrap",
       "clientRoles": {
-        "realm-management": ["manage-users", "view-users", "query-users"]
+        "realm-management": ["manage-users"]
       }
     },
     {
@@ -104,8 +108,14 @@
       "enabled": true,
       "serviceAccountClientId": "pmart-employee-service",
       "clientRoles": {
-        "realm-management": ["manage-users", "view-users", "query-users"]
+        "realm-management": ["manage-users"]
       }
     }
-  ]
+  ],
+  "clientScopeMappings": {
+    "realm-management": [
+      { "client": "pmart-employee-service", "roles": ["manage-users"] },
+      { "client": "pmart-employee-auth-bootstrap", "roles": ["manage-users"] }
+    ]
+  }
 }
