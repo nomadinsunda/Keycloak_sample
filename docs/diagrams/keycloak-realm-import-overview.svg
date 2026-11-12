@@ -1,0 +1,335 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560" role="img" aria-labelledby="t d">
+  <title id="t">Keycloak Realm Import 개요</title>
+  <desc id="d">Keycloak Realm Import의 정의, 구성 요소, 동작 순서, Import 대상, 제약을 정리한 그림 (PMart 직원 IAM 검증 프로젝트, Keycloak 26.8.1)</desc>
+  <defs>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#5b21b6"/>
+    </linearGradient>
+    <linearGradient id="sum" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#3b0764"/>
+    </linearGradient>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#1e1b4b" flood-opacity="0.10"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6d28d9"/>
+    </marker>
+    <marker id="arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#64748b"/>
+    </marker>
+    <style>
+      text { font-family: 'Pretendard','Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif; fill: #1e293b; }
+      .mono { font-family: 'JetBrains Mono','D2Coding','Consolas','Menlo',monospace; }
+      .h1 { font-size: 46px; font-weight: 800; fill: #ffffff; }
+      .sub { font-size: 20px; fill: #ddd6fe; }
+      .sec { font-size: 26px; font-weight: 800; fill: #1e1b4b; }
+      .secn { font-size: 18px; font-weight: 800; fill: #ffffff; }
+      .ct { font-size: 20px; font-weight: 800; fill: #1e1b4b; }
+      .b { font-size: 15.5px; fill: #334155; }
+      .s { font-size: 13.5px; fill: #64748b; }
+      .lbl { font-size: 14px; font-weight: 700; fill: #6d28d9; letter-spacing: 0.5px; }
+      .tag { font-size: 15px; font-weight: 800; fill: #ffffff; }
+      .code { font-size: 13.5px; fill: #4c1d95; }
+      .log { font-size: 12.5px; fill: #475569; }
+      .card { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1.2; }
+      .zone { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.2; stroke-dasharray: 6 5; }
+      .flow { stroke: #6d28d9; stroke-width: 2.2; fill: none; }
+      .flowG { stroke: #64748b; stroke-width: 2; fill: none; }
+    </style>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="1600" height="2560" fill="#f5f3ff"/>
+
+  <!-- ===================== 헤더 ===================== -->
+  <rect width="1600" height="190" fill="url(#hdr)"/>
+  <circle cx="1480" cy="40" r="120" fill="#ffffff" opacity="0.04"/>
+  <circle cx="1390" cy="170" r="70" fill="#ffffff" opacity="0.05"/>
+  <text x="60" y="88" class="h1">Keycloak Realm Import</text>
+  <text x="60" y="130" class="sub">Git의 JSON 파일을 Keycloak 시작 시 읽어, Realm이 없을 때만 그대로 만드는 초기 설치 기능</text>
+  <rect x="1212" y="52" width="328" height="38" rx="19" fill="#ffffff" fill-opacity="0.13" stroke="#c4b5fd" stroke-opacity="0.5"/>
+  <text x="1376" y="77" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#ede9fe">Keycloak 26.8.1 · PMart 직원 IAM PoC</text>
+  <text x="60" y="166" style="font-size:14px;fill:#c4b5fd">이 프로젝트: start --import-realm · Realm pmart-employees · PostgreSQL keycloak DB</text>
+
+  <!-- ===================== 1. 정의 ===================== -->
+  <circle cx="78" cy="242" r="18" fill="#6d28d9"/><text x="78" y="248" text-anchor="middle" class="secn">1</text>
+  <text x="108" y="251" class="sec">정의</text>
+
+  <g filter="url(#sh)">
+    <rect x="60" y="280" width="710" height="170" rx="16" class="card"/>
+    <rect x="800" y="280" width="740" height="170" rx="16" class="card"/>
+  </g>
+  <rect x="60" y="280" width="8" height="170" rx="4" fill="#a78bfa"/>
+  <rect x="800" y="280" width="8" height="170" rx="4" fill="#6d28d9"/>
+  <text x="92" y="322" class="lbl">REALM</text>
+  <text x="92" y="354" class="ct">Keycloak 안의 독립된 설정 단위</text>
+  <text x="92" y="386" class="b">사용자 · OAuth Client · 역할 · 로그인 정책을 하나로 묶음</text>
+  <text x="92" y="412" class="b">Realm끼리는 서로 보이지 않음</text>
+  <text x="92" y="436" class="s">이 프로젝트: <tspan class="mono code">pmart-employees</tspan> (관리자용 <tspan class="mono code">master</tspan>는 기본으로 있음)</text>
+
+  <text x="832" y="322" class="lbl">REALM IMPORT</text>
+  <text x="832" y="354" class="ct">파일에서 읽어 Realm을 만드는 기능</text>
+  <text x="832" y="386" class="b">Keycloak 서버가 시작할 때 지정된 폴더의 JSON을 읽어</text>
+  <text x="832" y="412" class="b">그 내용대로 Realm을 DB에 생성</text>
+  <text x="832" y="436" class="s">관리 콘솔에서 손으로 클릭해 만드는 작업을 파일로 대신함</text>
+
+  <!-- ===================== 2. 구성 요소 ===================== -->
+  <circle cx="78" cy="512" r="18" fill="#6d28d9"/><text x="78" y="518" text-anchor="middle" class="secn">2</text>
+  <text x="108" y="521" class="sec">구성 요소 — 무엇이, 어디서, 어떻게</text>
+
+  <!-- 호스트 PC -->
+  <rect x="60" y="550" width="420" height="330" rx="18" class="zone"/>
+  <text x="84" y="580" class="lbl">호스트 PC</text>
+  <g filter="url(#sh)">
+    <rect x="84" y="596" width="372" height="132" rx="12" class="card"/>
+    <rect x="84" y="744" width="372" height="116" rx="12" class="card"/>
+  </g>
+  <circle cx="112" cy="626" r="15" fill="#6d28d9"/><text x="112" y="631" text-anchor="middle" class="tag">①</text>
+  <text x="138" y="632" class="ct" style="font-size:18px">입력 파일</text>
+  <text x="104" y="666" class="mono code">infra/keycloak/import/</text>
+  <text x="104" y="688" class="mono code">pmart-employees-realm.json</text>
+  <text x="104" y="714" class="s">Realm 전체 설정 · Git으로 관리</text>
+  <circle cx="112" cy="774" r="15" fill="#d97706"/><text x="112" y="779" text-anchor="middle" class="tag">④</text>
+  <text x="138" y="780" class="ct" style="font-size:18px">비밀 값</text>
+  <text x="104" y="812" class="b"><tspan class="mono code">.env</tspan> (Git 제외) · Client Secret 4개 · URL</text>
+  <text x="104" y="838" class="s">JSON에는 <tspan class="mono code">${환경변수}</tspan> 자리만 둠</text>
+
+  <!-- Docker Compose -->
+  <rect x="530" y="550" width="310" height="330" rx="18" class="zone"/>
+  <text x="554" y="580" class="lbl">DOCKER COMPOSE</text>
+  <g filter="url(#sh)">
+    <rect x="554" y="596" width="262" height="132" rx="12" class="card"/>
+    <rect x="554" y="744" width="262" height="116" rx="12" class="card"/>
+  </g>
+  <circle cx="582" cy="626" r="15" fill="#6d28d9"/><text x="582" y="631" text-anchor="middle" class="tag">③</text>
+  <text x="608" y="632" class="ct" style="font-size:18px">전달 방법</text>
+  <text x="574" y="664" class="b">읽기 전용 bind mount</text>
+  <text x="574" y="690" class="mono code" style="font-size:12.5px">./infra/keycloak/import</text>
+  <text x="574" y="710" class="mono code" style="font-size:12.5px">  → /opt/…/data/import:ro</text>
+  <text x="574" y="780" class="ct" style="font-size:18px">환경변수 주입</text>
+  <text x="574" y="812" class="b">compose.yaml</text>
+  <text x="574" y="836" class="mono code" style="font-size:12.5px">keycloak.environment</text>
+
+  <!-- Keycloak 컨테이너 -->
+  <rect x="890" y="550" width="430" height="330" rx="18" class="zone" style="fill:#f5f3ff;stroke:#a78bfa"/>
+  <text x="914" y="580" class="lbl">KEYCLOAK 컨테이너</text>
+  <g filter="url(#sh)">
+    <rect x="914" y="596" width="382" height="76" rx="12" class="card"/>
+    <rect x="914" y="686" width="382" height="76" rx="12" class="card"/>
+    <rect x="914" y="776" width="382" height="84" rx="12" class="card"/>
+  </g>
+  <circle cx="942" cy="634" r="15" fill="#6d28d9"/><text x="942" y="639" text-anchor="middle" class="tag">②</text>
+  <text x="968" y="626" class="ct" style="font-size:17px">읽는 위치 (고정)</text>
+  <text x="968" y="652" class="mono code">/opt/keycloak/data/import</text>
+  <circle cx="942" cy="724" r="15" fill="#6d28d9"/><text x="942" y="729" text-anchor="middle" class="tag">⑤</text>
+  <text x="968" y="716" class="ct" style="font-size:17px">실행 옵션</text>
+  <text x="968" y="742" class="mono code">start --import-realm</text>
+  <circle cx="942" cy="818" r="15" fill="#6d28d9"/><text x="942" y="823" text-anchor="middle" class="tag">⑥</text>
+  <text x="968" y="808" class="ct" style="font-size:17px">적용 규칙</text>
+  <text x="968" y="834" class="mono code">IGNORE_EXISTING</text>
+  <text x="1128" y="834" class="s">이미 있으면 건너뜀</text>
+
+  <!-- PostgreSQL -->
+  <g filter="url(#sh)">
+    <path d="M1370,640 v160 a85,22 0 0 0 170,0 v-160" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4"/>
+    <ellipse cx="1455" cy="640" rx="85" ry="22" fill="#ede9fe" stroke="#94a3b8" stroke-width="1.4"/>
+  </g>
+  <circle cx="1455" cy="700" r="15" fill="#6d28d9"/><text x="1455" y="705" text-anchor="middle" class="tag">⑦</text>
+  <text x="1455" y="744" text-anchor="middle" class="ct" style="font-size:17px">결과 저장소</text>
+  <text x="1455" y="770" text-anchor="middle" class="b">PostgreSQL</text>
+  <text x="1455" y="794" text-anchor="middle" class="mono code">keycloak DB</text>
+
+  <!-- 화살표 -->
+  <path d="M456,662 H554" class="flow" marker-end="url(#ar)"/>
+  <path d="M816,640 H914" class="flow" marker-end="url(#ar)"/>
+  <path d="M456,802 H554" class="flow" marker-end="url(#ar)"/>
+  <path d="M816,802 C860,802 870,724 914,724" class="flow" marker-end="url(#ar)"/>
+  <path d="M1296,818 C1340,818 1340,760 1370,760" class="flow" marker-end="url(#ar)"/>
+  <text x="458" y="652" class="s" style="font-size:12px">볼륨</text>
+  <text x="458" y="792" class="s" style="font-size:12px">값</text>
+  <text x="848" y="630" class="s" style="font-size:12px">연결</text>
+
+  <!-- ===================== 3. 동작 순서 ===================== -->
+  <circle cx="78" cy="942" r="18" fill="#6d28d9"/><text x="78" y="948" text-anchor="middle" class="secn">3</text>
+  <text x="108" y="951" class="sec">동작 순서 — 서버를 시작할 때마다 한 번</text>
+
+  <!-- 단계 박스 -->
+  <g filter="url(#sh)">
+    <rect x="200" y="980" width="560" height="62" rx="12" class="card"/>
+    <rect x="200" y="1066" width="560" height="62" rx="12" class="card"/>
+    <rect x="200" y="1152" width="560" height="62" rx="12" class="card"/>
+    <rect x="200" y="1238" width="560" height="62" rx="12" class="card"/>
+  </g>
+  <rect x="200" y="980" width="64" height="62" rx="12" fill="#6d28d9"/><text x="232" y="1018" text-anchor="middle" class="tag" style="font-size:18px">1</text>
+  <text x="284" y="1006" class="b" style="font-weight:700">docker compose up</text>
+  <text x="284" y="1030" class="s">③ 볼륨 연결 · ④ 환경변수 주입 · 컨테이너 시작</text>
+  <rect x="200" y="1066" width="64" height="62" rx="12" fill="#6d28d9"/><text x="232" y="1104" text-anchor="middle" class="tag" style="font-size:18px">2</text>
+  <text x="284" y="1092" class="b" style="font-weight:700">Keycloak 시작 <tspan class="mono code">start --import-realm</tspan></text>
+  <text x="284" y="1116" class="s">HTTP 포트가 열리고 부트스트랩 단계에 들어감</text>
+  <rect x="200" y="1152" width="64" height="62" rx="12" fill="#6d28d9"/><text x="232" y="1190" text-anchor="middle" class="tag" style="font-size:18px">3</text>
+  <text x="284" y="1178" class="b" style="font-weight:700">② 폴더의 JSON 파일 읽기</text>
+  <text x="284" y="1202" class="mono log">"Importing from directory /opt/keycloak/…/data/import"</text>
+  <rect x="200" y="1238" width="64" height="62" rx="12" fill="#6d28d9"/><text x="232" y="1276" text-anchor="middle" class="tag" style="font-size:18px">4</text>
+  <text x="284" y="1264" class="b" style="font-weight:700"><tspan class="mono code">${환경변수}</tspan> → 실제 값으로 치환</text>
+  <text x="284" y="1288" class="s">Secret · URL이 .env 값으로 채워짐</text>
+  <path d="M480,1042 V1066" class="flow" marker-end="url(#ar)"/>
+  <path d="M480,1128 V1152" class="flow" marker-end="url(#ar)"/>
+  <path d="M480,1214 V1238" class="flow" marker-end="url(#ar)"/>
+  <path d="M480,1300 V1326" class="flow" marker-end="url(#ar)"/>
+
+  <!-- 판단 -->
+  <g filter="url(#sh)">
+    <polygon points="480,1328 690,1392 480,1456 270,1392" fill="#ffffff" stroke="#6d28d9" stroke-width="2"/>
+  </g>
+  <text x="480" y="1386" text-anchor="middle" class="b" style="font-weight:800">5  ⑦ DB에 pmart-employees</text>
+  <text x="480" y="1410" text-anchor="middle" class="b" style="font-weight:800">Realm이 있는가?</text>
+
+  <!-- 분기 -->
+  <path d="M270,1392 H140 V1500" class="flow" marker-end="url(#ar)" style="stroke:#0f766e"/>
+  <path d="M690,1392 H820 V1500" class="flowG" marker-end="url(#arG)"/>
+  <text x="152" y="1380" style="font-size:14px;font-weight:800;fill:#0f766e">없음 · 첫 기동</text>
+  <text x="704" y="1380" style="font-size:14px;font-weight:800;fill:#475569">있음 · 두 번째 기동부터</text>
+
+  <g filter="url(#sh)">
+    <rect x="60" y="1502" width="400" height="118" rx="14" fill="#ecfdf5" stroke="#6ee7b7"/>
+    <rect x="500" y="1502" width="400" height="118" rx="14" fill="#f1f5f9" stroke="#cbd5e1"/>
+  </g>
+  <text x="84" y="1536" style="font-size:17px;font-weight:800;fill:#065f46">6  JSON대로 Realm 생성</text>
+  <text x="84" y="1562" class="b">Client · Service Account · 역할 → ⑦ DB에 저장</text>
+  <text x="84" y="1594" class="mono log" style="fill:#047857">"Realm 'pmart-employees' imported"</text>
+  <text x="524" y="1536" style="font-size:17px;font-weight:800;fill:#334155">6′  파일 전체 건너뜀</text>
+  <text x="524" y="1562" class="b">바뀐 부분만 합치지 않음</text>
+  <text x="524" y="1594" class="mono log">"… already exists. Import skipped"</text>
+
+  <path d="M260,1620 V1650 H480 V1672" class="flow" style="stroke:#0f766e"/>
+  <path d="M700,1620 V1650 H480" class="flowG"/>
+  <path d="M480,1650 V1672" class="flow" marker-end="url(#ar)"/>
+  <g filter="url(#sh)">
+    <rect x="200" y="1674" width="560" height="56" rx="12" fill="#1e1b4b"/>
+  </g>
+  <text x="232" y="1709" class="tag" style="font-size:18px">7</text>
+  <text x="270" y="1709" style="font-size:17px;font-weight:700;fill:#ffffff">부트스트랩 완료 → 요청 처리 시작</text>
+  <text x="560" y="1709" class="mono" style="font-size:12.5px;fill:#c4b5fd">"Bootstrap completed"</text>
+
+  <!-- 실측 타임라인 -->
+  <g filter="url(#sh)">
+    <rect x="980" y="980" width="560" height="750" rx="16" class="card"/>
+  </g>
+  <rect x="980" y="980" width="560" height="58" rx="16" fill="#fef3c7"/>
+  <rect x="980" y="1020" width="560" height="18" fill="#fef3c7"/>
+  <text x="1006" y="1016" style="font-size:18px;font-weight:800;fill:#92400e">실측 타임라인 — 첫 기동 (2026-11-12)</text>
+
+  <path d="M1040,1070 V1500" stroke="#e2e8f0" stroke-width="4"/>
+  <circle cx="1040" cy="1088" r="10" fill="#6d28d9"/>
+  <text x="1066" y="1084" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:30</text>
+  <text x="1066" y="1108" class="b">Keycloak HTTP 포트 열림 (단계 2)</text>
+  <circle cx="1040" cy="1178" r="10" fill="#d97706"/>
+  <text x="1066" y="1174" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:50</text>
+  <text x="1066" y="1198" class="b">Compose가 healthy로 판단 → Employee Auth 시작</text>
+  <text x="1066" y="1220" class="s">/iam/health/ready가 이미 UP</text>
+  <circle cx="1040" cy="1290" r="10" fill="#dc2626"/>
+  <text x="1066" y="1286" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:58</text>
+  <text x="1066" y="1310" class="b">Employee Auth의 Keycloak 호출 → 503</text>
+  <text x="1066" y="1332" class="mono log">"Bootstrap in progress" → 5초 뒤 재시도</text>
+  <circle cx="1040" cy="1402" r="10" fill="#6d28d9"/>
+  <text x="1066" y="1398" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">02:00:02</text>
+  <text x="1066" y="1422" class="b">Import 시작 (단계 3~6)</text>
+  <circle cx="1040" cy="1492" r="10" fill="#0f766e"/>
+  <text x="1066" y="1488" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">02:00:08</text>
+  <text x="1066" y="1512" class="b">Realm imported · Bootstrap completed (단계 7)</text>
+  <text x="1066" y="1534" class="s">Employee Auth는 3번째 재시도에서 성공</text>
+
+  <rect x="1004" y="1580" width="512" height="126" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1028" y="1614" style="font-size:16px;font-weight:800;fill:#991b1b">healthcheck 통과 ≠ Import 완료</text>
+  <text x="1028" y="1642" class="b">depends_on: service_healthy로 기다려도</text>
+  <text x="1028" y="1666" class="b">Import 중에 서비스가 시작될 수 있음</text>
+  <text x="1028" y="1690" class="b">→ 부팅 시 Keycloak 호출은 <tspan style="font-weight:800;fill:#991b1b">503 재시도 필수</tspan></text>
+
+  <!-- ===================== 4. Import 대상 ===================== -->
+  <circle cx="78" cy="1802" r="18" fill="#6d28d9"/><text x="78" y="1808" text-anchor="middle" class="secn">4</text>
+  <text x="108" y="1811" class="sec">Import로 만드는 것 / 만들지 않는 것</text>
+
+  <g filter="url(#sh)">
+    <rect x="60" y="1840" width="730" height="300" rx="16" class="card"/>
+    <rect x="810" y="1840" width="730" height="300" rx="16" class="card"/>
+  </g>
+  <rect x="60" y="1840" width="730" height="54" rx="16" fill="#ede9fe"/><rect x="60" y="1876" width="730" height="18" fill="#ede9fe"/>
+  <text x="88" y="1875" style="font-size:18px;font-weight:800;fill:#4c1d95">Import로 생성 — Realm JSON에 정의</text>
+  <rect x="810" y="1840" width="730" height="54" rx="16" fill="#f1f5f9"/><rect x="810" y="1876" width="730" height="18" fill="#f1f5f9"/>
+  <text x="838" y="1875" style="font-size:18px;font-weight:800;fill:#334155">Import로 만들지 않음 — 다른 주체가 생성</text>
+
+  <g>
+    <text x="88" y="1930" class="b" style="font-weight:800">Realm 설정</text>
+    <text x="270" y="1930" class="b">이름 · 무차별 대입 방지 · 회원가입 금지 · SMTP</text>
+    <line x1="88" y1="1950" x2="762" y2="1950" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="88" y="1980" class="b" style="font-weight:800">OAuth Client 4개</text>
+    <text x="270" y="1980" class="mono code">pmart-employee-auth · pmart-webmail</text>
+    <text x="270" y="2002" class="mono code">pmart-employee-service · …-auth-bootstrap</text>
+    <line x1="88" y1="2020" x2="762" y2="2020" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="88" y="2050" class="b" style="font-weight:800">Service Account 2개</text>
+    <text x="270" y="2050" class="b">관리용 Client의 내부 사용자 · <tspan class="mono code">manage-users</tspan></text>
+    <line x1="88" y1="2070" x2="762" y2="2070" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="88" y="2100" class="b" style="font-weight:800">Role Scope Mapping</text>
+    <text x="270" y="2100" class="b">관리용 Client 토큰의 역할 범위 = <tspan class="mono code">manage-users</tspan></text>
+  </g>
+  <g>
+    <text x="838" y="1930" class="b" style="font-weight:800">Keycloak 기본 Client 6개</text>
+    <text x="1080" y="1930" class="b">Realm 생성 시 Keycloak이 자동 생성</text>
+    <line x1="838" y1="1950" x2="1512" y2="1950" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="838" y="1990" class="b" style="font-weight:800">테스트용 인사팀 계정</text>
+    <text x="1080" y="1990" class="b">Employee Auth Service 부팅 시</text>
+    <text x="1080" y="2012" class="s">Client Credentials → Admin REST API</text>
+    <line x1="838" y1="2034" x2="1512" y2="2034" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="838" y="2074" class="b" style="font-weight:800">직원 계정</text>
+    <text x="1080" y="2074" class="b">직원 등록 시 Employee Service가</text>
+    <text x="1080" y="2096" class="s">Client Credentials → Admin REST API</text>
+  </g>
+
+  <!-- ===================== 5. 제약 ===================== -->
+  <circle cx="78" cy="2202" r="18" fill="#dc2626"/><text x="78" y="2208" text-anchor="middle" class="secn">5</text>
+  <text x="108" y="2211" class="sec">제약과 주의 사항</text>
+
+  <g filter="url(#sh)">
+    <rect x="60" y="2240" width="355" height="132" rx="14" class="card"/>
+    <rect x="435" y="2240" width="355" height="132" rx="14" class="card"/>
+    <rect x="810" y="2240" width="355" height="132" rx="14" class="card"/>
+    <rect x="1185" y="2240" width="355" height="132" rx="14" class="card"/>
+  </g>
+  <rect x="60" y="2240" width="355" height="6" rx="3" fill="#dc2626"/>
+  <rect x="435" y="2240" width="355" height="6" rx="3" fill="#dc2626"/>
+  <rect x="810" y="2240" width="355" height="6" rx="3" fill="#dc2626"/>
+  <rect x="1185" y="2240" width="355" height="6" rx="3" fill="#dc2626"/>
+  <text x="84" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">① 최초 1회만 적용</text>
+  <text x="84" y="2312" class="b">Realm이 생긴 뒤 JSON을 고치고</text>
+  <text x="84" y="2336" class="b">재시작해도 반영되지 않음</text>
+  <text x="84" y="2358" class="mono s">IGNORE_EXISTING</text>
+  <text x="459" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">② 시작할 때만 읽음</text>
+  <text x="459" y="2312" class="b">실행 중에는 파일 변경을</text>
+  <text x="459" y="2336" class="b">감시하지 않음</text>
+  <text x="834" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">③ 파일 단위로 판단</text>
+  <text x="834" y="2312" class="b">Realm이 있으면 바뀐 부분만</text>
+  <text x="834" y="2336" class="b">합치지 않고 전체를 건너뜀</text>
+  <text x="1209" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">④ healthcheck ≠ 완료</text>
+  <text x="1209" y="2312" class="b">Import 중 시작된 서비스는 503</text>
+  <text x="1209" y="2336" class="b">→ 재시도 필요 (실측 확인)</text>
+
+  <!-- 설정 변경 방법 -->
+  <text x="60" y="2418" style="font-size:17px;font-weight:800;fill:#1e1b4b">그래서 설정을 바꿀 때는</text>
+  <g filter="url(#sh)">
+    <rect x="60" y="2432" width="730" height="58" rx="12" class="card"/>
+    <rect x="810" y="2432" width="730" height="58" rx="12" class="card"/>
+  </g>
+  <text x="84" y="2467" class="b" style="font-weight:800">데이터를 지워도 됨</text>
+  <text x="250" y="2467" class="mono code">docker compose down -v → up</text>
+  <text x="520" y="2467" class="s">DB 삭제 → Import 다시 실행</text>
+  <text x="834" y="2467" class="b" style="font-weight:800">데이터 유지</text>
+  <text x="944" y="2467" class="mono code">kcadm.sh</text>
+  <text x="1011" y="2467" class="s">로 실행 중인 Realm 변경 + 같은 내용을 JSON에도 반영</text>
+
+  <!-- ===================== 6. 요약 ===================== -->
+  <rect x="0" y="2510" width="1600" height="50" fill="url(#sum)"/>
+  <text x="60" y="2541" style="font-size:16px;font-weight:800;fill:#c4b5fd">한 줄 요약</text>
+  <text x="170" y="2541" style="font-size:16px;fill:#ffffff">Git의 JSON을 시작 시 고정 경로에서 읽어 Realm이 없을 때만 만드는 초기 설치 기능 — 생성 이후의 설정 변경은 처리하지 않음</text>
+</svg>

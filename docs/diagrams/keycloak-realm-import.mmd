@@ -1,0 +1,79 @@
+%% Keycloak Realm JSON — 파일 위치, Keycloak 서버로 전달되는 방식, 읽는 시점
+%% 렌더링: npx -p @mermaid-js/mermaid-cli@11.16.0 mmdc -i keycloak-realm-import.mmd -o keycloak-realm-import.svg
+%% (Mermaid 11 기본 테마. Chromium 다운로드 대신 설치된 Chrome을 쓰려면 -p puppeteer.json 에
+%%  {"executablePath": "C:/Program Files/Google/Chrome/Application/chrome.exe"} 지정)
+%% 근거 (2026-11-12, Keycloak 26.8.1에서 직접 확인):
+%%  - kc.sh start --help: "--import-realm  Import realms during startup by reading any realm configuration file from the 'data/import' directory."
+%%  - kc.sh import --help-all: --dir · --file · --override (Default: true)
+%%  - docker inspect: bind C:\...\infra\keycloak\import -> /opt/keycloak/data/import rw=false, 컨테이너 안 쓰기 시도 → Read-only file system
+%%  - 첫 기동·재기동 로그 (DirImportProvider, ImportUtils, KeycloakApplication)
+sequenceDiagram
+    autonumber
+    participant DEV as 프로젝트 저장소<br/>(호스트 PC · Git)
+    participant ENV as .env<br/>(호스트 PC · Git 제외)
+    participant DC as Docker Compose
+    participant DIR as 컨테이너 안 고정 경로<br/>/opt/keycloak/data/import
+    participant KC as Keycloak 26.8.1 서버<br/>(start --import-realm)
+    participant PG as PostgreSQL<br/>(keycloak DB)
+    participant SVC as 의존 서비스<br/>(Employee Auth · Employee Service · Gateway)
+
+    %% ================================================================
+    Note over DEV,SVC: [1] 파일 위치 — Keycloak이 읽는 경로는 정해져 있고, 프로젝트 쪽 경로는 Compose 볼륨으로 연결
+
+    Note over DEV: infra/keycloak/import/<br/>pmart-employees-realm.json<br/>Realm · Client 4개 · Service Account ·<br/>역할 매핑 · clientScopeMappings 정의<br/>Secret·URL 자리에는 ${환경변수}
+    Note over DIR: Keycloak이 읽는 위치는 고정<br/>KEYCLOAK_HOME/data/import<br/>= /opt/keycloak/data/import<br/>(--import-realm에는 경로를 바꾸는 옵션이 없음<br/>→ 다른 파일을 쓰려면 이 경로에 마운트)
+    Note over ENV: Client Secret 4개 · PUBLIC_BASE_URL ·<br/>BACKOFFICE_ORIGIN · WEBMAIL_ORIGIN · IAM_DOMAIN ·<br/>MAIL_NOREPLY_PASSWORD
+    Note over KC: Realm 이름은 파일 이름이 아니라<br/>JSON 안의 "realm": "pmart-employees"
+
+    %% ================================================================
+    Note over DEV,SVC: [2] 전달 방식 — 이미지에 넣지도, API로 보내지도 않음. 파일은 읽기 전용 볼륨, 값은 환경변수
+
+    DEV->>DC: compose.yaml keycloak.volumes<br/>./infra/keycloak/import:/opt/keycloak/data/import:ro
+    ENV->>DC: Compose가 .env를 읽어 ${...} 값 결정
+    DC->>DIR: bind mount (읽기 전용 · rw=false)<br/>호스트 폴더를 그대로 보여 줌 → 복사본이 아님
+    DC->>KC: 컨테이너 시작<br/>command: start --import-realm<br/>environment: Client Secret 4개 · URL 등 (Realm JSON 자리표시자용)
+    Note over DIR,KC: 컨테이너 안에서 이 폴더에 쓰기 시도 → "Read-only file system" (Keycloak이 파일을 바꿀 수 없음)
+
+    %% ================================================================
+    Note over DEV,SVC: [3] 언제 읽는가 — 서버를 시작할 때마다 한 번, 부트스트랩 단계에서 (실행 중에는 파일을 감시하지 않음)
+
+    KC->>KC: Quarkus 기동 → HTTP 포트 열림<br/>"started in 6.9s. Listening on: http://0.0.0.0:8080"
+    KC-->>DC: /iam/health/ready = UP → healthcheck 통과 (Import가 아직 끝나지 않았는데도)
+    DC->>SVC: depends_on: keycloak (condition: service_healthy) 충족 → 의존 서비스 시작
+    rect rgb(255, 243, 205)
+        Note over KC,SVC: 부트스트랩 진행 중 — 이때 들어온 요청은 503 "Bootstrap in progress"<br/>첫 기동 실측: Employee Auth 시작 01:59:50 · Import 02:00:02~02:00:08 · Bootstrap completed 02:00:08
+        SVC-->>KC: Employee Auth 부팅 시 테스트 계정 생성 요청 → 503 → 5초 간격 재시도 (3회 후 성공)
+        KC->>PG: DB 스키마 준비 · (첫 기동이면) master Realm 생성<br/>"Initializing master realm"
+        KC->>DIR: 폴더 안의 Realm 설정 파일 읽기<br/>"Importing from directory /opt/keycloak/bin/../data/import"
+        KC->>KC: ${환경변수} 자리표시자를 컨테이너 환경변수 값으로 치환
+        KC->>KC: "Full model import requested. Strategy: IGNORE_EXISTING"
+        KC->>PG: pmart-employees Realm이 이미 있는가?
+        alt 없음 — DB가 비어 있는 첫 기동 (docker compose down -v 후 포함)
+            rect rgb(232, 245, 233)
+                KC->>PG: Realm 생성 · 기본 Client 6개 자동 생성
+                KC->>PG: JSON 내용 저장 — Client 4개(Secret = .env 값) ·<br/>Service Account 2개 · 역할 매핑 · Role Scope Mapping
+                Note over KC,PG: 로그: "Realm 'pmart-employees' imported"
+            end
+        else 있음 — 두 번째 기동부터 (docker compose restart · up)
+            rect rgb(244, 244, 244)
+                KC->>KC: 파일 전체를 건너뜀 (일부만 합치지 않음)
+                Note over KC,PG: 로그: "Realm 'pmart-employees' already exists. Import skipped"
+            end
+        end
+        KC->>KC: "Import finished successfully" → "Bootstrap completed"
+    end
+    SVC->>KC: 재시도한 요청 성공 (Realm · Client가 준비됨)
+    Note over DC,SVC: 주의: healthcheck(depends_on: service_healthy)는 Import 완료를 보장하지 않음<br/>→ Keycloak을 부팅 시 호출하는 서비스는 503에 대비한 재시도가 필요 (HrTestAccountBootstrap: 5초 간격 최대 30회)
+
+    %% ================================================================
+    Note over DEV,SVC: [4] 파일을 고쳤을 때 — 고친 내용은 "Realm이 없는 상태로 시작할 때"만 반영됨
+
+    DEV->>DIR: Realm JSON 수정 (볼륨이라 컨테이너에도 바로 보임)
+    Note over DIR,KC: 실행 중인 Keycloak은 반응하지 않음 · 재시작해도 Realm이 있으므로 Import skipped
+    alt 개발 환경을 새로 만들어도 됨
+        DC->>PG: docker compose down -v → keycloak DB 삭제
+        DC->>KC: docker compose up → 첫 기동과 같은 경로로 JSON 전체 반영
+    else 기존 데이터 유지
+        DEV->>KC: docker compose exec keycloak kcadm.sh … 로 실행 중인 Realm 직접 변경<br/>+ 같은 내용을 JSON에도 반영 (다음 새 환경에서 재현되도록)
+    end
+    Note over DEV,KC: 참고: kc.sh import --dir · --file 은 별도 명령(서버 시작과 따로 실행)이고 기본값이 --override true(기존 데이터 덮어씀).<br/>이 프로젝트는 쓰지 않고 start --import-realm(IGNORE_EXISTING)만 사용

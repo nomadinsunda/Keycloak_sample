@@ -1,0 +1,88 @@
+%% PMart Keycloak — Realm pmart-employees에 등록된 OAuth Client 목록과 등록 방법
+%% 렌더링: npx -p @mermaid-js/mermaid-cli@11.16.0 mmdc -i keycloak-oauth-client-registration.mmd -o keycloak-oauth-client-registration.svg
+%% (Mermaid 11 기본 테마. Chromium 다운로드 대신 설치된 Chrome을 쓰려면 -p puppeteer.json 에
+%%  {"executablePath": "C:/Program Files/Google/Chrome/Application/chrome.exe"} 지정)
+%% 근거: compose.yaml(keycloak 서비스), infra/keycloak/import/pmart-employees-realm.json, 각 서비스 application.yml,
+%%       infra/roundcube/config/oauth.inc.php, 2026-11-12 실행 중인 Keycloak 26.8.1의 kcadm 조회·Import 로그
+sequenceDiagram
+    autonumber
+    participant OP as 운영자<br/>(.env 작성)
+    participant DC as Docker Compose
+    participant JSON as Realm JSON<br/>(pmart-employees-realm.json)
+    participant KC as Keycloak 26.8.1<br/>(start --import-realm)
+    participant PG as PostgreSQL<br/>(keycloak DB)
+    participant EAS as Employee Auth Service
+    participant ESV as Employee Service
+    participant RC as Roundcube
+
+    %% ================================================================
+    Note over OP,RC: [등록된 OAuth Client] Realm pmart-employees — 10개 = PMart가 Realm JSON으로 등록한 4개 + Keycloak이 Realm 생성 시 자동으로 만든 기본 6개
+
+    rect rgb(232, 245, 233)
+        Note over JSON,PG: PMart 등록 4개 (모두 Confidential · Client Secret · fullScopeAllowed = false · Implicit OFF · Direct Access Grants OFF)
+        Note over JSON: pmart-employee-auth<br/>Authorization Code + PKCE(S256)<br/>redirect: PUBLIC_BASE_URL/employee-auth/callback<br/>Service Account OFF<br/>사용: Employee Auth Service (직원 로그인)
+        Note over KC: pmart-webmail<br/>Authorization Code + PKCE(S256)<br/>redirect: WEBMAIL_ORIGIN/index.php/login/oauth<br/>Service Account OFF<br/>사용: Roundcube (웹메일 로그인)
+        Note over PG: pmart-employee-service<br/>Client Credentials만 (Standard Flow OFF)<br/>Service Account ON · manage-users<br/>사용: Employee Service<br/>(IAM 계정 발급 · 퇴사 처리)
+        Note over EAS: pmart-employee-auth-bootstrap<br/>Client Credentials만 (Standard Flow OFF)<br/>Service Account ON · manage-users<br/>사용: Employee Auth Service<br/>(부팅 시 테스트용 인사팀 계정)
+    end
+
+    rect rgb(244, 244, 244)
+        Note over JSON,PG: Keycloak 기본 6개 (Realm을 만들면 자동 생성 · PMart 코드는 사용하지 않음)
+        Note over JSON: account (public)<br/>account-console (public)<br/>직원 본인용 계정 콘솔<br/>Gateway /iam 경유 접근 가능 (200)
+        Note over KC: admin-cli (public · Direct Access Grants ON)<br/>이 Realm에서는 사용 안 함<br/>(kcadm은 master Realm의 admin-cli 사용)
+        Note over PG: broker (bearerOnly) · Identity Brokering용<br/>realm-management (bearerOnly)<br/>manage-users 등 관리 역할을 담는 Client
+        Note over EAS: security-admin-console (public)<br/>관리 콘솔 · Gateway가 /iam/admin/** 차단<br/>→ 외부 접근 불가 (401)
+    end
+
+    rect rgb(253, 236, 236)
+        Note over JSON,RC: 주의 (2026-11-12 확인 · 조치 미정): 계정 콘솔에서 직원이 이메일을 바꿀 수 있고(user profile email 편집 = admin·user), 중복 이메일이 허용되며,<br/>Dovecot이 토큰의 email을 메일 계정 이름으로 씀 → 이메일을 다른 직원 주소로 바꾸면 그 직원의 메일함에 IMAP 로그인됨
+    end
+
+    %% ================================================================
+    Note over OP,RC: [1] 준비 — Client 정의는 Git의 Realm JSON, 비밀 값은 Git 밖의 .env
+    OP->>OP: .env 작성 (Git 제외)<br/>Client Secret 4개 · PUBLIC_BASE_URL · BACKOFFICE_ORIGIN · WEBMAIL_ORIGIN
+    Note over JSON: Client 4개의 clientId · Grant 스위치 · PKCE · fullScopeAllowed ·<br/>Service Account 역할 · clientScopeMappings 정의<br/>Secret과 URL은 자리표시자: "secret": "${EMPLOYEE_SERVICE_CLIENT_SECRET}"
+
+    %% ================================================================
+    Note over OP,RC: [2] Compose 기동 — Keycloak에 환경변수와 Import 파일 전달
+    OP->>DC: docker compose up
+    DC->>PG: (DB가 비어 있을 때만) init 스크립트로 keycloak DB · 전용 계정 생성
+    DC->>KC: 컨테이너 시작: start --import-realm<br/>환경변수: Client Secret 4개 · URL (compose.yaml keycloak.environment)<br/>볼륨: ./infra/keycloak/import → /opt/keycloak/data/import (읽기 전용)
+    KC->>PG: master Realm 초기화 (첫 기동)
+
+    %% ================================================================
+    Note over OP,RC: [3] Realm Import — 전략 IGNORE_EXISTING (이미 있는 Realm은 건너뜀)
+    KC->>JSON: /opt/keycloak/data/import/*.json 읽기
+    KC->>KC: ${...} 자리표시자를 컨테이너 환경변수 값으로 치환
+    alt pmart-employees Realm이 이미 DB에 있음 (두 번째 기동부터)
+        KC->>KC: Import 건너뜀 → JSON을 고쳐도 반영되지 않음
+    else DB가 비어 있는 첫 기동
+        rect rgb(219, 238, 252)
+            KC->>KC: Realm 생성 → 기본 Client 6개 자동 생성
+            KC->>KC: JSON의 Client 4개 등록<br/>clientId · Secret(.env 값) · redirectUris · PKCE S256 · Grant 스위치 · fullScopeAllowed=false
+            KC->>KC: users[]의 Service Account 2개 연결 (serviceAccountClientId)<br/>역할 매핑: realm-management manage-users
+            KC->>KC: clientScopeMappings → 관리용 Client 2개의 Role Scope = manage-users
+            KC->>PG: keycloak DB에 저장
+        end
+    end
+    Note over KC,PG: Import 로그: "Full model import requested. Strategy: IGNORE_EXISTING" → "Realm 'pmart-employees' imported"
+
+    %% ================================================================
+    Note over OP,RC: [4] 각 애플리케이션이 같은 Client ID · Secret으로 Keycloak을 호출 (Compose 내부 주소 직접 호출)
+    DC->>EAS: 환경변수 EMPLOYEE_AUTH_CLIENT_SECRET · EMPLOYEE_AUTH_BOOTSTRAP_CLIENT_SECRET<br/>application.yml: client-id pmart-employee-auth · bootstrap-client-id pmart-employee-auth-bootstrap
+    DC->>ESV: 환경변수 EMPLOYEE_SERVICE_CLIENT_SECRET<br/>application.yml: client-id pmart-employee-service
+    DC->>RC: 환경변수 WEBMAIL_CLIENT_SECRET<br/>config/oauth.inc.php: client_id pmart-webmail · PKCE S256
+    EAS->>KC: Token Endpoint · Basic(pmart-employee-auth : Secret) — 로그인 Code 교환<br/>Basic(pmart-employee-auth-bootstrap : Secret) — client_credentials
+    ESV->>KC: Token Endpoint · Basic(pmart-employee-service : Secret) — client_credentials
+    RC->>KC: Token Endpoint · Basic(pmart-webmail : Secret) — 웹메일 로그인 Code 교환
+    KC->>KC: 등록된 Secret과 비교 → 일치해야 토큰 발급
+    Note over EAS,KC: 2026-11-12 확인: Client 4개 모두 Keycloak에 저장된 Secret = .env 값 (해시로 비교, 값은 출력하지 않음)
+
+    %% ================================================================
+    Note over OP,RC: [5] 등록 후 Client 설정을 바꿀 때
+    alt 개발 환경을 새로 만들어도 됨
+        OP->>DC: docker compose down -v → up<br/>keycloak DB 삭제 → 다음 기동 때 Import가 다시 실행되어 JSON 그대로 등록
+    else 기존 데이터를 유지해야 함
+        OP->>KC: docker compose exec keycloak kcadm.sh ... (컨테이너 안에서 실행)<br/>관리 콘솔·Admin API는 외부에 공개하지 않으므로 내부에서만 변경
+        OP->>JSON: 같은 내용을 Realm JSON에도 반영 (다음 새 환경에서 재현되도록)
+    end
