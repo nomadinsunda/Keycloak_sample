@@ -19,7 +19,7 @@ sequenceDiagram
     Note over B,MAIL: [1] 등록 요청 — 인사팀 직원은 로그인 흐름으로 받은 PMart JWT 쿠키를 가진 상태
     B->>GW: GET /csrf (credentials: include)
     GW-->>B: Set-Cookie: XSRF-TOKEN + 본문 token (SPA 메모리에 보관)
-    B->>GW: POST /employee-service/employees<br/>Cookie: PMART_EMP_AT · XSRF-TOKEN / 헤더: X-XSRF-TOKEN<br/>{employeeNo, iamAccount: gildong.hong, 이름, 부서, 초기 비밀번호, hrAdmin}
+    B->>GW: POST /employee-service/employees<br/>Cookie: PMART_EMP_AT · XSRF-TOKEN / 헤더: X-XSRF-TOKEN<br/>{employeeNo, iamAccount: gildong.hong, firstName, lastName, department, initialPassword, hrAdmin}
 
     rect rgb(255, 243, 205)
         Note over GW: Gateway 보안 검사
@@ -32,8 +32,9 @@ sequenceDiagram
     %% ---------------------------------------------------------------
     Note over B,MAIL: [2] PMart 업무 권한 · 입력값 확인 (Keycloak 권한이 아니라 PMart 역할 HR_ADMIN)
     rect rgb(219, 238, 252)
-        ES->>ES: JWT 검증 — 서명 · iss · aud = pmart-employee-service · user_type<br/>HR_ADMIN 역할 확인 (JWT roles · 원본은 employee DB) → 아니면 403
-        ES->>ES: 입력값 검증 — 계정명 영문 소문자·숫자·._- 3~30자<br/>실패 시 400 ProblemDetail (한국어 메시지)
+        ES->>ES: JWT 검증 — 서명 · iss · aud = pmart-employee-service · user_type
+        ES->>ES: 입력값 검증 (@Valid, 메서드 호출 전) — 계정명 영문 소문자·숫자·._- 3~30자<br/>실패 시 400 ProblemDetail (한국어 메시지)
+        ES->>ES: HR_ADMIN 역할 확인 (@PreAuthorize · JWT roles · 원본은 employee DB) → 아니면 403
         ES->>EDB: 중복 확인 — 발급 완료된 사번 · 다른 직원의 IAM 계정 ID → 409
         ES->>EDB: UPSERT employees<br/>(iam_id = gildong.hong@pmart.test · ACTIVE · roles · provisioning_status = PENDING)
     end
@@ -44,10 +45,10 @@ sequenceDiagram
         Note over ES,KC: 서버 간 직접 호출 — Gateway를 거치지 않음 (http://keycloak:8080/iam) · Admin API는 Gateway로 노출하지 않음
         ES->>KC: POST /realms/pmart-employees/protocol/openid-connect/token<br/>grant_type=client_credentials<br/>Basic 인증: pmart-employee-service + Client Secret
         KC->>KC: Client 인증 → 서비스 계정 service-account-pmart-employee-service<br/>토큰 역할 = 역할 매핑 ∩ Role Scope Mapping = realm-management: manage-users (D23)
-        KC-->>ES: 관리용 Access Token (주체 = 서비스 계정 · 사람이 아님)
+        KC-->>ES: 관리용 Access Token (주체 = 서비스 계정 · 사람이 아님)<br/>계정 조회·생성과 비밀번호 설정이 각각 토큰을 받음 (요청마다 발급)
         ES->>KC: GET /admin/realms/pmart-employees/users?exact=true&username=gildong.hong@pmart.test
         KC-->>ES: [] (이미 있으면 그 ID를 사용 → 재시도해도 중복 생성 안 됨)
-        ES->>KC: POST /admin/realms/pmart-employees/users<br/>{username = email = gildong.hong@pmart.test, emailVerified, enabled}
+        ES->>KC: POST /admin/realms/pmart-employees/users<br/>{username = email = gildong.hong@pmart.test, firstName, lastName, emailVerified, enabled}
         KC->>KC: 토큰 권한(manage-users) 확인 → 사용자 생성
         KC-->>ES: 201 Location: .../users/{Keycloak UUID}
         ES->>KC: PUT /admin/realms/pmart-employees/users/{id}/reset-password<br/>{초기 비밀번호, temporary: true}
@@ -59,7 +60,7 @@ sequenceDiagram
     alt Keycloak 발급 성공
         rect rgb(232, 245, 233)
             ES->>EDB: provisioning_status = COMPLETED · keycloak_user_id = UUID<br/>(사번 ↔ Keycloak sub 매핑)
-            ES->>MAIL: gildong.hong@pmart.test 한 줄 추가<br/>(비밀번호 = 무작위 값의 SHA512-CRYPT · 메일 로그인은 Keycloak 토큰으로만)
+            ES->>MAIL: gildong.hong@pmart.test 한 줄 추가<br/>(비밀번호 = 무작위 값의 SHA512-CRYPT · 메일 로그인은 Keycloak 토큰으로만)<br/>실패해도 발급은 되돌리지 않음 → 201 그대로, 부팅 동기화에서 다시 시도
         end
         ES-->>GW: 201 Created {employeeNo, iamId, provisioningStatus: COMPLETED}
         GW-->>B: 201

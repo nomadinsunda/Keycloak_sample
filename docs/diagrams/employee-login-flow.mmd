@@ -49,7 +49,7 @@ sequenceDiagram
     rect rgb(219, 238, 252)
         Note over AUTH,ADB: state 검증 — 꺼내면서 삭제 (재사용 방지)
         AUTH->>ADB: DELETE login_transactions WHERE state = ? RETURNING nonce, code_verifier
-        ADB-->>AUTH: nonce · code_verifier (없음 · 이미 사용 · 만료 → login_error=invalid_state)
+        ADB-->>AUTH: nonce · code_verifier (없음 · 이미 사용 · 만료 → 302 백오피스 /?login_error=invalid_state<br/>트랜잭션이 없어 앱인지 구분할 수 없음 → 앱 로그인이어도 백오피스로 감, 미결정 #13)
     end
 
     rect rgb(244, 244, 244)
@@ -69,14 +69,14 @@ sequenceDiagram
     ES->>EDB: SELECT employees WHERE keycloak_user_id = sub
     ES-->>AUTH: 사번 · status · roles (역할 원본 = employee DB)
 
-    alt 직원 없음 또는 INACTIVE
-        AUTH-->>B: 302 백오피스 /?login_error=unknown_employee | inactive_employee
+    alt 직원 없음 또는 INACTIVE (ID Token 검증 실패 invalid_id_token도 같은 방식)
+        AUTH-->>B: 백오피스: 302 /?login_error=unknown_employee | inactive_employee<br/>앱: 302 pmart-employee://login-callback?error=unknown_employee | inactive_employee
     else client = backoffice (인사팀 백오피스)
         rect rgb(232, 245, 233)
             AUTH->>AUTH: PMart JWT 발급 (RS256 · kid · 15분)<br/>sub=사번 · roles · user_type=EMPLOYEE · external_subject=Keycloak sub
             AUTH->>ADB: INSERT refresh_tokens (SHA-256 해시만 · 로그인 시점 + 8시간 고정)
         end
-        AUTH-->>GW: 302 백오피스 /<br/>Set-Cookie: PMART_EMP_AT (HttpOnly · SameSite=Lax · Path=/ · 15분)<br/>Set-Cookie: PMART_EMP_RT (HttpOnly · Path=/employee-auth)
+        AUTH-->>GW: 302 백오피스 /<br/>Set-Cookie: PMART_EMP_AT (HttpOnly · SameSite=Lax · Path=/ · 15분)<br/>Set-Cookie: PMART_EMP_RT (HttpOnly · SameSite=Lax · Path=/employee-auth · 8시간 중 남은 시간)
         GW-->>B: 302 → 백오피스 (토큰은 URL에 싣지 않음)
     else client = mobile (Flutter 앱)
         AUTH->>ADB: INSERT mobile_login_tickets<br/>(ticket 해시 · app_challenge 결속 · 60초 · 단일 사용)

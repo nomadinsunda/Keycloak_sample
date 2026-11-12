@@ -1,0 +1,322 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2620" viewBox="0 0 1600 2620" role="img" aria-labelledby="t d">
+  <title id="t">PoC LAN 메일 서버 운용</title>
+  <desc id="d">PMart 직원 IAM PoC의 LAN 메일 구성: mail-init, Docker Mailserver(Postfix·Dovecot), Roundcube, Keycloak, Employee Service, 공유 볼륨, 메일함 생성, IAM 계정 웹메일 로그인과 송수신, 보안 설정, 현재 상태 (2026-11-12 실행 중인 환경에서 확인)</desc>
+  <defs>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7c2d12"/>
+      <stop offset="1" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="sum" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#431407"/>
+      <stop offset="1" stop-color="#7c2d12"/>
+    </linearGradient>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#7c2d12" flood-opacity="0.10"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c2410c"/>
+    </marker>
+    <marker id="arB" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/>
+    </marker>
+    <marker id="arG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15803d"/>
+    </marker>
+    <style>
+      text { font-family: 'Pretendard','Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif; fill: #1e293b; }
+      .mono { font-family: 'JetBrains Mono','D2Coding','Consolas','Menlo',monospace; white-space: pre; }
+      .h1 { font-size: 44px; font-weight: 800; fill: #ffffff; }
+      .sub { font-size: 19px; fill: #fed7aa; }
+      .sec { font-size: 26px; font-weight: 800; fill: #7c2d12; }
+      .secn { font-size: 18px; font-weight: 800; fill: #ffffff; }
+      .ct { font-size: 18px; font-weight: 800; fill: #0f172a; }
+      .b { font-size: 15px; fill: #334155; }
+      .bb { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .s { font-size: 13px; fill: #64748b; }
+      .lbl { font-size: 13px; font-weight: 800; fill: #c2410c; letter-spacing: 0.6px; }
+      .card { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1.2; }
+      .flow { stroke: #c2410c; stroke-width: 2.2; fill: none; }
+      .flowB { stroke: #1d4ed8; stroke-width: 2.2; fill: none; }
+      .flowG { stroke: #15803d; stroke-width: 2.2; fill: none; stroke-dasharray: 7 5; }
+      .nb { font-size: 13px; font-weight: 800; fill: #ffffff; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="2620" fill="#fff8f3"/>
+
+  <!-- ===================== 헤더 ===================== -->
+  <rect width="1600" height="190" fill="url(#hdr)"/>
+  <circle cx="1480" cy="40" r="120" fill="#ffffff" opacity="0.05"/>
+  <text x="60" y="84" class="h1">PoC LAN 메일 서버 운용</text>
+  <text x="60" y="122" class="sub">IAM 계정 ID = 메일 주소 · IAM 계정(Keycloak) 하나로 웹메일 로그인 · pmart.test 안에서만 송수신 (D22)</text>
+  <text x="60" y="160" style="font-size:15px;fill:#fdba74">Docker Mailserver 16.0.1 (Postfix SMTP · Dovecot IMAP) · Roundcube 1.7.5 · 메일용 외부 공개 포트는 웹메일 8088 하나 (로그인 화면은 Gateway 8080)</text>
+  <rect x="1250" y="52" width="290" height="38" rx="19" fill="#ffffff" fill-opacity="0.13" stroke="#fdba74" stroke-opacity="0.5"/>
+  <text x="1395" y="77" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#ffedd5">실행 중인 환경 · 2026-11-12 확인</text>
+
+  <!-- ===================== 1. 구성 ===================== -->
+  <circle cx="78" cy="242" r="18" fill="#c2410c"/><text x="78" y="248" text-anchor="middle" class="secn">1</text>
+  <text x="108" y="251" class="sec">구성 — 누가 누구와 통신하는가</text>
+
+  <!-- 호스트 PC -->
+  <g filter="url(#sh)"><rect x="60" y="420" width="190" height="170" rx="14" class="card"/></g>
+  <text x="155" y="456" text-anchor="middle" class="ct">직원 브라우저</text>
+  <text x="155" y="480" text-anchor="middle" class="s">호스트 PC</text>
+  <rect x="80" y="500" width="150" height="30" rx="15" fill="#ffedd5"/>
+  <text x="155" y="520" text-anchor="middle" class="mono" style="font-size:13px;font-weight:800;fill:#9a3412">:8088 웹메일</text>
+  <rect x="80" y="540" width="150" height="30" rx="15" fill="#dbeafe"/>
+  <text x="155" y="560" text-anchor="middle" class="mono" style="font-size:13px;font-weight:800;fill:#1e40af">:8080 /iam</text>
+
+  <!-- Compose 네트워크 -->
+  <rect x="290" y="290" width="1250" height="560" rx="18" fill="#fffbf7" stroke="#fdba74" stroke-width="1.6" stroke-dasharray="8 6"/>
+  <text x="314" y="318" class="lbl">DOCKER COMPOSE 내부 네트워크 — SMTP·IMAP·Keycloak은 외부 포트 없음</text>
+
+  <!-- roundcube -->
+  <g filter="url(#sh)"><rect x="320" y="340" width="290" height="150" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/></g>
+  <text x="340" y="370" class="ct">roundcube</text>
+  <text x="340" y="392" class="s mono">roundcubemail:1.7.5-apache</text>
+  <text x="340" y="418" class="b">웹메일 · Client <tspan class="mono" style="font-size:13.5px">pmart-webmail</tspan></text>
+  <text x="340" y="440" class="b">OIDC + PKCE S256</text>
+  <text x="340" y="466" class="s">DB: PostgreSQL <tspan class="mono">roundcube</tspan></text>
+
+  <!-- mailserver -->
+  <g filter="url(#sh)"><rect x="720" y="340" width="380" height="150" rx="12" fill="#ffffff" stroke="#c2410c" stroke-width="2"/></g>
+  <text x="740" y="370" class="ct">mailserver</text>
+  <text x="740" y="392" class="s mono">docker-mailserver:16.0.1 · mail.pmart.test</text>
+  <rect x="740" y="406" width="164" height="68" rx="8" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="752" y="430" class="bb">Postfix (SMTP)</text>
+  <text x="752" y="452" class="s mono">587 STARTTLS</text>
+  <text x="752" y="468" class="s">송신·배달</text>
+  <rect x="916" y="406" width="164" height="68" rx="8" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="928" y="430" class="bb">Dovecot (IMAP)</text>
+  <text x="928" y="452" class="s mono">143 STARTTLS</text>
+  <text x="928" y="468" class="s">메일함·로그인 검증</text>
+
+  <!-- employee-service -->
+  <g filter="url(#sh)"><rect x="1210" y="340" width="300" height="150" rx="12" class="card"/></g>
+  <text x="1230" y="370" class="ct">employee-service</text>
+  <text x="1230" y="396" class="b">직원 등록 → Keycloak 계정</text>
+  <text x="1230" y="418" class="b">+ 메일함 생성 요청</text>
+  <text x="1230" y="444" class="s mono">MailboxProvisioner</text>
+  <text x="1230" y="466" class="s">부팅 시 재직자 메일함 동기화</text>
+
+  <!-- gateway -->
+  <g filter="url(#sh)"><rect x="320" y="580" width="290" height="110" rx="12" class="card"/></g>
+  <text x="340" y="610" class="ct">gateway</text>
+  <text x="340" y="636" class="b"><tspan class="mono" style="font-size:13.5px">/iam/**</tspan> → Keycloak</text>
+  <text x="340" y="660" class="s">브라우저의 Keycloak 로그인 화면 전용</text>
+
+  <!-- keycloak -->
+  <g filter="url(#sh)"><rect x="720" y="580" width="380" height="110" rx="12" fill="#ffffff" stroke="#1d4ed8" stroke-width="2"/></g>
+  <text x="740" y="610" class="ct">keycloak</text>
+  <text x="740" y="636" class="b">Realm <tspan class="mono" style="font-size:13.5px">pmart-employees</tspan> · IAM 계정</text>
+  <text x="740" y="660" class="s">userinfo로 메일 로그인 토큰 검증 · noreply로 메일 발송</text>
+  <text x="740" y="678" class="s mono">KC_TRUSTSTORE_PATHS=/certs/ca.crt</text>
+
+  <!-- mail-init -->
+  <g filter="url(#sh)"><rect x="1210" y="580" width="300" height="110" rx="12" fill="#f8fafc" stroke="#cbd5e1" stroke-dasharray="5 4"/></g>
+  <text x="1230" y="610" class="ct">mail-init <tspan class="s">기동 때마다 실행 후 종료</tspan></text>
+  <text x="1230" y="636" class="b">내부 CA·인증서 · noreply 계정</text>
+  <text x="1230" y="658" class="b">외부 발송 차단 설정 복사</text>
+  <text x="1230" y="678" class="s">CA·noreply는 있으면 건너뜀 · 차단 설정은 매번</text>
+
+  <!-- 화살표 -->
+  <path d="M250,470 L285,470 L285,415 L318,415" class="flow" marker-end="url(#ar)"/>
+  <circle cx="285" cy="442" r="11" fill="#c2410c"/><text x="285" y="447" text-anchor="middle" class="nb">1</text>
+  <path d="M250,555 L285,555 L285,635 L318,635" class="flowB" marker-end="url(#arB)"/>
+  <circle cx="285" cy="598" r="11" fill="#1d4ed8"/><text x="285" y="603" text-anchor="middle" class="nb">2</text>
+  <line x1="610" y1="635" x2="718" y2="635" class="flowB" marker-end="url(#arB)"/>
+  <path d="M520,490 L520,540 L780,540 L780,578" class="flowB" marker-end="url(#arB)"/>
+  <circle cx="650" cy="540" r="11" fill="#1d4ed8"/><text x="650" y="545" text-anchor="middle" class="nb">3</text>
+  <line x1="610" y1="415" x2="718" y2="415" class="flow" marker-end="url(#ar)"/>
+  <circle cx="664" cy="415" r="11" fill="#c2410c"/><text x="664" y="420" text-anchor="middle" class="nb">4</text>
+  <line x1="990" y1="490" x2="990" y2="578" class="flowB" marker-end="url(#arB)"/>
+  <circle cx="990" cy="534" r="11" fill="#1d4ed8"/><text x="990" y="539" text-anchor="middle" class="nb">5</text>
+  <line x1="830" y1="580" x2="830" y2="492" class="flow" marker-end="url(#ar)"/>
+  <circle cx="830" cy="534" r="11" fill="#c2410c"/><text x="830" y="539" text-anchor="middle" class="nb">6</text>
+  <line x1="1210" y1="415" x2="1102" y2="415" class="flowG" marker-end="url(#arG)"/>
+  <circle cx="1156" cy="415" r="11" fill="#15803d"/><text x="1156" y="420" text-anchor="middle" class="nb">7</text>
+
+  <!-- 볼륨 -->
+  <text x="314" y="728" class="lbl">공유 볼륨</text>
+  <rect x="314" y="742" width="300" height="88" rx="10" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="330" y="766" class="bb mono" style="font-size:14px">mail-certs</text>
+  <text x="330" y="788" class="s">ca.crt · mail.crt · mail.key</text>
+  <text x="330" y="808" class="s">mail-init 씀 → mailserver·keycloak·</text>
+  <text x="330" y="824" class="s">roundcube 읽기 전용</text>
+  <rect x="628" y="742" width="330" height="88" rx="10" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="644" y="766" class="bb mono" style="font-size:14px">mail-config</text>
+  <text x="644" y="788" class="s"><tspan class="mono">postfix-accounts.cf</tspan> (계정 목록) ·</text>
+  <text x="644" y="806" class="s"><tspan class="mono">postfix-main.cf</tspan> (외부 발송 차단)</text>
+  <text x="644" y="824" class="s">mail-init·employee-service 씀 → mailserver 읽음</text>
+  <rect x="972" y="742" width="260" height="88" rx="10" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="988" y="766" class="bb mono" style="font-size:14px">mail-data</text>
+  <text x="988" y="788" class="s">실제 메일 (/var/mail)</text>
+  <text x="988" y="808" class="s mono">pmart.test/&lt;계정명&gt;/</text>
+  <rect x="1246" y="742" width="264" height="88" rx="10" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="1262" y="766" class="bb mono" style="font-size:14px">mail-state</text>
+  <text x="1262" y="788" class="s">메일 서버 상태 (큐 등)</text>
+  <text x="1262" y="808" class="s">/var/mail-state</text>
+
+  <!-- 범례 -->
+  <g filter="url(#sh)"><rect x="60" y="870" width="1480" height="150" rx="14" class="card"/></g>
+  <circle cx="90" cy="902" r="11" fill="#c2410c"/><text x="90" y="907" text-anchor="middle" class="nb">1</text>
+  <text x="110" y="907" class="b">브라우저 → 웹메일 (호스트 포트 8088)</text>
+  <circle cx="90" cy="936" r="11" fill="#1d4ed8"/><text x="90" y="941" text-anchor="middle" class="nb">2</text>
+  <text x="110" y="941" class="b">브라우저 → Gateway <tspan class="mono" style="font-size:13.5px">/iam</tspan> → Keycloak 로그인 화면</text>
+  <circle cx="90" cy="970" r="11" fill="#1d4ed8"/><text x="90" y="975" text-anchor="middle" class="nb">3</text>
+  <text x="110" y="975" class="b">Roundcube → Keycloak: Code→토큰 교환 (내부 직접, Gateway 경유 안 함)</text>
+  <circle cx="90" cy="1004" r="11" fill="#c2410c"/><text x="90" y="1009" text-anchor="middle" class="nb">4</text>
+  <text x="110" y="1009" class="b">Roundcube → 메일 서버: IMAP 143 · SMTP 587, STARTTLS + XOAUTH2 (Access Token)</text>
+  <circle cx="820" cy="902" r="11" fill="#1d4ed8"/><text x="820" y="907" text-anchor="middle" class="nb">5</text>
+  <text x="840" y="907" class="b">Dovecot → Keycloak <tspan class="mono" style="font-size:13.5px">userinfo</tspan>: 토큰 검증 (내부 직접)</text>
+  <circle cx="820" cy="936" r="11" fill="#c2410c"/><text x="820" y="941" text-anchor="middle" class="nb">6</text>
+  <text x="840" y="941" class="b">Keycloak → SMTP 587: <tspan class="mono" style="font-size:13.5px">noreply@pmart.test</tspan>로 계정 안내 메일</text>
+  <circle cx="820" cy="970" r="11" fill="#15803d"/><text x="820" y="975" text-anchor="middle" class="nb">7</text>
+  <text x="840" y="975" class="b">Employee Service → <tspan class="mono" style="font-size:13.5px">mail-config</tspan> 계정 파일에 IAM 계정 추가</text>
+  <text x="840" y="1007" class="s">메일 서버는 변경을 감지해 메일함을 만듦 (수 초)</text>
+
+  <!-- ===================== 2. 메일함 생성 ===================== -->
+  <circle cx="78" cy="1082" r="18" fill="#15803d"/><text x="78" y="1088" text-anchor="middle" class="secn">2</text>
+  <text x="108" y="1091" class="sec">메일함 생성 — IAM 계정이 생기면 메일함도 생김</text>
+
+  <g filter="url(#sh)"><rect x="60" y="1120" width="270" height="150" rx="12" class="card"/></g>
+  <text x="80" y="1150" class="lbl" style="fill:#15803d">① 인사팀 직원 등록</text>
+  <text x="80" y="1178" class="b">백오피스 → Gateway →</text>
+  <text x="80" y="1200" class="b">Employee Service</text>
+  <text x="80" y="1232" class="s">계정명 예: <tspan class="mono">jungnam.kim</tspan></text>
+  <line x1="330" y1="1195" x2="364" y2="1195" class="flowG" style="stroke-dasharray:none" marker-end="url(#arG)"/>
+  <g filter="url(#sh)"><rect x="370" y="1120" width="290" height="150" rx="12" class="card"/></g>
+  <text x="390" y="1150" class="lbl" style="fill:#15803d">② Keycloak IAM 계정 생성</text>
+  <text x="390" y="1178" class="b">Admin REST API (<tspan class="mono" style="font-size:13.5px">manage-users</tspan>)</text>
+  <text x="390" y="1200" class="b">username = email =</text>
+  <text x="390" y="1222" class="mono" style="font-size:13.5px">jungnam.kim@pmart.test</text>
+  <line x1="660" y1="1195" x2="694" y2="1195" class="flowG" style="stroke-dasharray:none" marker-end="url(#arG)"/>
+  <g filter="url(#sh)"><rect x="700" y="1120" width="420" height="150" rx="12" fill="#f0fdf4" stroke="#86efac" stroke-width="1.4"/></g>
+  <text x="720" y="1150" class="lbl" style="fill:#15803d">③ 계정 파일에 한 줄 추가 (mail-config)</text>
+  <text x="720" y="1178" class="mono" style="font-size:13px">jungnam.kim@pmart.test|{SHA512-CRYPT}$6$…</text>
+  <text x="720" y="1204" class="b">비밀번호 = <tspan class="bb">아무도 모르는 무작위 값</tspan>의 해시</text>
+  <text x="720" y="1226" class="s">→ 비밀번호로는 로그인 불가, Keycloak 토큰으로만 로그인</text>
+  <text x="720" y="1248" class="s">이미 있으면 건너뜀 (멱등)</text>
+  <line x1="1120" y1="1195" x2="1154" y2="1195" class="flowG" style="stroke-dasharray:none" marker-end="url(#arG)"/>
+  <g filter="url(#sh)"><rect x="1160" y="1120" width="380" height="150" rx="12" class="card"/></g>
+  <text x="1180" y="1150" class="lbl" style="fill:#15803d">④ 메일 서버가 변경 감지</text>
+  <text x="1180" y="1178" class="b">계정 반영 → 메일함 생성 (수 초)</text>
+  <text x="1180" y="1200" class="mono" style="font-size:13px">/var/mail/pmart.test/jungnam.kim/</text>
+  <text x="1180" y="1232" class="s">계정이 있어야 메일을 받음</text>
+  <text x="1180" y="1250" class="s">(OAuth 로그인만으로는 메일함이 안 생김)</text>
+
+  <rect x="60" y="1286" width="1480" height="64" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+  <text x="80" y="1312" class="b"><tspan class="bb">부팅 동기화</tspan>: Employee Service가 시작할 때 재직 중(ACTIVE)인 직원의 메일함을 모두 확인해 없으면 만듦. 테스트 인사팀 계정은 internal upsert 때 생성(부팅 순서 경쟁 해결)</text>
+  <text x="80" y="1336" class="b"><tspan class="bb">퇴사</tspan>: Keycloak 계정 비활성화 → 웹메일 로그인 불가. <tspan class="bb">메일함은 남겨 둠</tspan>(메일 보존, 퇴사 후에도 수신은 됨)</text>
+
+  <!-- ===================== 3. 로그인과 송수신 ===================== -->
+  <circle cx="78" cy="1412" r="18" fill="#c2410c"/><text x="78" y="1418" text-anchor="middle" class="secn">3</text>
+  <text x="108" y="1421" class="sec">웹메일 로그인과 송수신 — 메일 서버 비밀번호 없이 Keycloak 토큰으로</text>
+
+  <g filter="url(#sh)"><rect x="60" y="1450" width="1480" height="420" rx="14" class="card"/></g>
+  <!-- 로그인 단계 -->
+  <text x="84" y="1484" class="lbl">로그인</text>
+  <g>
+    <rect x="84" y="1500" width="260" height="96" rx="10" fill="#fff7ed"/>
+    <text x="100" y="1526" class="bb">① http://localhost:8088</text>
+    <text x="100" y="1550" class="s">로그인 화면 없이 바로 Keycloak으로</text>
+    <text x="100" y="1568" class="s mono">oauth_login_redirect = true</text>
+    <line x1="344" y1="1548" x2="372" y2="1548" class="flow" marker-end="url(#ar)"/>
+    <rect x="378" y="1500" width="300" height="96" rx="10" fill="#eff6ff"/>
+    <text x="394" y="1526" class="bb">② Keycloak 로그인 (Gateway /iam)</text>
+    <text x="394" y="1550" class="s">IAM 계정 ID + 비밀번호, PKCE S256</text>
+    <text x="394" y="1568" class="s">SSO 세션 있으면 화면 없이 통과</text>
+    <line x1="678" y1="1548" x2="706" y2="1548" class="flow" marker-end="url(#ar)"/>
+    <rect x="712" y="1500" width="300" height="96" rx="10" fill="#eff6ff"/>
+    <text x="728" y="1526" class="bb">③ Code → 토큰 (내부 직접)</text>
+    <text x="728" y="1550" class="s mono">scope = openid email profile</text>
+    <text x="728" y="1568" class="s">메일 계정 = userinfo의 <tspan class="mono">email</tspan></text>
+    <line x1="1012" y1="1548" x2="1040" y2="1548" class="flow" marker-end="url(#ar)"/>
+    <rect x="1046" y="1500" width="470" height="96" rx="10" fill="#fff7ed"/>
+    <text x="1062" y="1526" class="bb">④ IMAP 143 STARTTLS + XOAUTH2</text>
+    <text x="1062" y="1550" class="s">Dovecot이 토큰으로 Keycloak <tspan class="mono">userinfo</tspan> 호출 → 응답의</text>
+    <text x="1062" y="1568" class="s"><tspan class="mono">email</tspan> = 로그인 계정이어야 통과 (<tspan class="mono">username_attribute = email</tspan>)</text>
+  </g>
+
+  <!-- 받기·보내기 -->
+  <rect x="84" y="1620" width="700" height="226" rx="10" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="104" y="1650" class="ct">받기 (IMAP · Dovecot)</text>
+  <text x="104" y="1680" class="b">Roundcube가 IMAP으로 메일함을 읽음</text>
+  <text x="104" y="1704" class="s mono">tls://mailserver:143 · cafile=/certs/ca.crt · verify_peer=true</text>
+  <text x="104" y="1736" class="b">다른 직원이 보낸 메일 → Postfix가 <tspan class="mono" style="font-size:13.5px">pmart.test</tspan> 메일함에 배달</text>
+  <text x="104" y="1760" class="b">Keycloak이 보내는 계정 안내 메일(예: Update Your Account)도 여기로 도착</text>
+  <text x="104" y="1796" class="s">Dovecot 인증 방식: oauthbearer · xoauth2 (토큰) / plain · login (계정 파일 비밀번호 —</text>
+  <text x="104" y="1814" class="s">실제로 쓰는 것은 noreply뿐, 직원은 무작위 비밀번호) · TLS 없는 접속은 LOGINDISABLED</text>
+
+  <rect x="800" y="1620" width="716" height="226" rx="10" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="820" y="1650" class="ct">보내기 (SMTP · Postfix)</text>
+  <text x="820" y="1680" class="b">Roundcube가 SMTP 587로 같은 토큰을 써서 로그인 후 발송</text>
+  <text x="820" y="1704" class="s">Postfix는 SASL 인증을 Dovecot에 맡김 (<tspan class="mono">smtpd_sasl_type = dovecot</tspan>)</text>
+  <text x="820" y="1736" class="b"><tspan class="bb">SPOOF_PROTECTION=1</tspan>: 로그인 계정과 다른 보내는 사람 주소 거부</text>
+  <text x="820" y="1760" class="b"><tspan class="mono" style="font-size:13.5px">@pmart.test</tspan> 수신자 → 내부 메일함으로 배달</text>
+  <text x="820" y="1784" class="b" style="fill:#b91c1c">그 밖의 도메인 → 즉시 반송 (외부로 나가지 않음)</text>
+  <text x="820" y="1814" class="s mono">default_transport = relay_transport = error:… external mail is disabled</text>
+
+  <!-- ===================== 4. 보안 설정 ===================== -->
+  <circle cx="78" cy="1932" r="18" fill="#c2410c"/><text x="78" y="1938" text-anchor="middle" class="secn">4</text>
+  <text x="108" y="1941" class="sec">보안 설정과 알려진 결함</text>
+
+  <g filter="url(#sh)"><rect x="60" y="1970" width="350" height="190" rx="12" class="card"/></g>
+  <text x="80" y="2000" class="lbl">TLS · 내부 CA</text>
+  <text x="80" y="2026" class="b">mail-init이 만든 <tspan class="bb">PMart LAN Test CA</tspan></text>
+  <text x="80" y="2048" class="b">서버 인증서 SAN: <tspan class="mono" style="font-size:13px">mailserver</tspan>,</text>
+  <text x="80" y="2068" class="mono" style="font-size:13px">mail.pmart.test</text>
+  <text x="80" y="2098" class="b">Roundcube·Keycloak 모두</text>
+  <text x="80" y="2120" class="bb">인증서 검증을 끄지 않음</text>
+  <text x="80" y="2144" class="s">공인 CA 아님 → LAN 다른 PC는 CA 배포 필요</text>
+
+  <g filter="url(#sh)"><rect x="430" y="1970" width="350" height="190" rx="12" class="card"/></g>
+  <text x="450" y="2000" class="lbl">포트 · 노출</text>
+  <text x="450" y="2026" class="b">호스트 공개: <tspan class="bb">8088(웹메일)</tspan>뿐</text>
+  <text x="450" y="2048" class="b">SMTP 587 · IMAP 143은 내부 전용</text>
+  <text x="450" y="2070" class="b">→ 직원은 웹메일로만 사용</text>
+  <text x="450" y="2100" class="b">스팸·DKIM·DMARC·SPF·ClamAV·</text>
+  <text x="450" y="2122" class="b">Fail2ban 끔 (실습 범위 밖)</text>
+  <text x="450" y="2144" class="s">healthcheck: 143·587 LISTEN 확인</text>
+
+  <g filter="url(#sh)"><rect x="800" y="1970" width="740" height="190" rx="12" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.6"/></g>
+  <text x="820" y="2000" class="lbl" style="fill:#b91c1c">알려진 결함 — 미결정 #12 (2026-11-12 재현)</text>
+  <text x="820" y="2028" class="bb" style="fill:#7f1d1d">계정 콘솔에서 이메일을 다른 직원 주소로 바꾸면 그 직원의 메일함에 로그인됨</text>
+  <text x="820" y="2056" class="b">원인 ① Dovecot이 바뀔 수 있는 <tspan class="mono" style="font-size:13.5px">email</tspan>을 계정 이름으로 사용 (<tspan class="mono" style="font-size:13.5px">username_attribute</tspan>)</text>
+  <text x="820" y="2078" class="b">원인 ② user profile의 <tspan class="mono" style="font-size:13.5px">email</tspan> 편집 권한에 본인(user) 포함</text>
+  <text x="820" y="2100" class="b">원인 ③ <tspan class="mono" style="font-size:13.5px">duplicateEmailsAllowed: true</tspan></text>
+  <text x="820" y="2132" class="s">조치 방법은 아직 정하지 않음 (미결정)</text>
+  <text x="820" y="2150" class="s">→ docs/open-questions.md #12</text>
+
+  <!-- ===================== 5. 현재 상태와 운영 명령 ===================== -->
+  <g filter="url(#sh)"><rect x="60" y="2200" width="1480" height="370" rx="16" fill="url(#sum)"/></g>
+  <text x="90" y="2242" style="font-size:22px;font-weight:800;fill:#ffffff">현재 상태와 운영 명령</text>
+  <text x="90" y="2270" style="font-size:14.5px;fill:#fed7aa">지금 실행 중인 환경에서 확인한 값 (2026-11-12, mailserver Up · healthy)</text>
+
+  <rect x="90" y="2292" width="560" height="250" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#fdba74" stroke-opacity="0.4"/>
+  <text x="110" y="2322" style="font-size:16px;font-weight:800;fill:#fdba74">메일함 4개 (doveadm user '*')</text>
+  <text x="110" y="2354" class="mono" style="font-size:14px;fill:#ffedd5">noreply@pmart.test</text>
+  <text x="380" y="2354" style="font-size:13px;fill:#fed7aa">Keycloak 발신 (mail-init)</text>
+  <text x="110" y="2382" class="mono" style="font-size:14px;fill:#ffedd5">hr.admin@pmart.test</text>
+  <text x="380" y="2382" style="font-size:13px;fill:#fed7aa">테스트 인사팀 계정</text>
+  <text x="110" y="2410" class="mono" style="font-size:14px;fill:#ffedd5">gildong.123245@pmart.test</text>
+  <text x="380" y="2410" style="font-size:13px;fill:#fed7aa">e2e 테스트가 등록</text>
+  <text x="110" y="2438" class="mono" style="font-size:14px;fill:#ffedd5">jungnam.kim@pmart.test</text>
+  <text x="380" y="2438" style="font-size:13px;fill:#fed7aa">실기기 테스트에서 등록</text>
+  <text x="110" y="2476" style="font-size:13.5px;fill:#fed7aa">저장 위치: mail-data 볼륨 /var/mail/pmart.test/&lt;계정명&gt;</text>
+  <text x="110" y="2500" style="font-size:13.5px;fill:#fed7aa">docker compose down -v 하면 메일·계정 파일도 모두 삭제되고</text>
+  <text x="110" y="2520" style="font-size:13.5px;fill:#fed7aa">부팅 동기화로 재직자 메일함만 다시 생김</text>
+
+  <rect x="670" y="2292" width="840" height="250" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#fdba74" stroke-opacity="0.4"/>
+  <text x="690" y="2322" style="font-size:16px;font-weight:800;fill:#fdba74">운영 명령 (Git Bash는 MSYS_NO_PATHCONV=1)</text>
+  <text x="690" y="2354" style="font-size:13px;fill:#fed7aa">메일함 목록</text>
+  <text x="690" y="2374" class="mono" style="font-size:13.5px;fill:#ffedd5">docker compose exec mailserver doveadm user '*'</text>
+  <text x="690" y="2404" style="font-size:13px;fill:#fed7aa">받은 메일 제목</text>
+  <text x="690" y="2424" class="mono" style="font-size:13.5px;fill:#ffedd5">docker compose exec mailserver doveadm fetch -u hr.admin@pmart.test \</text>
+  <text x="690" y="2442" class="mono" style="font-size:13.5px;fill:#ffedd5">    'hdr.from hdr.subject' mailbox INBOX</text>
+  <text x="690" y="2472" style="font-size:13px;fill:#fed7aa">메일 서버 로그</text>
+  <text x="690" y="2492" class="mono" style="font-size:13.5px;fill:#ffedd5">docker compose logs -f mailserver</text>
+  <text x="690" y="2522" style="font-size:13px;fill:#fed7aa">웹메일: http://localhost:8088 (IAM 계정으로 로그인)</text>
+
+  <text x="60" y="2600" class="s">근거: compose.yaml · infra/mail/init.sh · infra/mail/postfix-main.cf · infra/roundcube/config/oauth.inc.php · MailboxProvisioner.java · mailserver 컨테이너의 dovecot auth-oauth2.conf.ext · postconf · doveadm user · docs/infrastructure/lan-mail.md</text>
+</svg>

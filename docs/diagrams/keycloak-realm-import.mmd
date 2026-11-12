@@ -15,7 +15,7 @@ sequenceDiagram
     participant DIR as 컨테이너 안 고정 경로<br/>/opt/keycloak/data/import
     participant KC as Keycloak 26.8.1 서버<br/>(start --import-realm)
     participant PG as PostgreSQL<br/>(keycloak DB)
-    participant SVC as 의존 서비스<br/>(Employee Auth · Employee Service · Gateway)
+    participant SVC as 의존 서비스<br/>(Employee Auth · Employee Service · Gateway · 메일 서버)
 
     %% ================================================================
     Note over DEV,SVC: [1] 파일 위치 — Keycloak이 읽는 경로는 정해져 있고, 프로젝트 쪽 경로는 Compose 볼륨으로 연결

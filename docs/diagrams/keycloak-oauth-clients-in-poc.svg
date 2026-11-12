@@ -1,0 +1,290 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2330" viewBox="0 0 1600 2330" role="img" aria-labelledby="t d">
+  <title id="t">PoC의 OAuth Client 등록</title>
+  <desc id="d">PMart 직원 IAM PoC에서 Keycloak OAuth Client 4개(pmart-employee-auth, pmart-webmail, pmart-employee-service, pmart-employee-auth-bootstrap)를 Realm JSON Import로 등록한 방법, Client별 설정, Service Account 권한(Role Mapping과 Role Scope Mapping의 교집합), 자동 생성 Client, 변경 방법 (Keycloak 26.8.1에서 확인)</desc>
+  <defs>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#064e3b"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="sum" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#064e3b"/>
+      <stop offset="1" stop-color="#134e4a"/>
+    </linearGradient>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#064e3b" flood-opacity="0.10"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#0f766e"/>
+    </marker>
+    <style>
+      text { font-family: 'Pretendard','Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif; fill: #1e293b; }
+      .mono { font-family: 'JetBrains Mono','D2Coding','Consolas','Menlo',monospace; white-space: pre; }
+      .h1 { font-size: 44px; font-weight: 800; fill: #ffffff; }
+      .sub { font-size: 19px; fill: #a7f3d0; }
+      .sec { font-size: 26px; font-weight: 800; fill: #064e3b; }
+      .secn { font-size: 18px; font-weight: 800; fill: #ffffff; }
+      .ct { font-size: 18px; font-weight: 800; fill: #0f172a; }
+      .b { font-size: 15px; fill: #334155; }
+      .bb { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .s { font-size: 13px; fill: #64748b; }
+      .lbl { font-size: 13px; font-weight: 800; fill: #0f766e; letter-spacing: 0.6px; }
+      .card { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1.2; }
+      .flow { stroke: #0f766e; stroke-width: 2.2; fill: none; }
+      .on { font-size: 13.5px; font-weight: 800; fill: #15803d; }
+      .off { font-size: 13.5px; font-weight: 700; fill: #94a3b8; }
+      .k { font-size: 13.5px; fill: #475569; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="2330" fill="#f0fdf9"/>
+
+  <!-- ===================== 헤더 ===================== -->
+  <rect width="1600" height="190" fill="url(#hdr)"/>
+  <circle cx="1480" cy="40" r="120" fill="#ffffff" opacity="0.04"/>
+  <text x="60" y="84" class="h1">PoC의 OAuth Client 등록</text>
+  <text x="60" y="122" class="sub">Keycloak(OAuth 서버)에 Client 4개를 어떻게 등록했고, 각각 무엇을 할 수 있게 설정했는가</text>
+  <text x="60" y="160" style="font-size:15px;fill:#6ee7b7">관리 콘솔 수작업 ✗ · 동적 Client 등록(DCR) ✗ · Admin API 스크립트 ✗ → Realm JSON 파일 하나를 처음 기동할 때 Import</text>
+  <rect x="1250" y="52" width="290" height="38" rx="19" fill="#ffffff" fill-opacity="0.13" stroke="#6ee7b7" stroke-opacity="0.5"/>
+  <text x="1395" y="77" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#d1fae5">Keycloak 26.8.1 · 2026-11-12 확인</text>
+
+  <!-- ===================== 1. 등록 방법 ===================== -->
+  <circle cx="78" cy="242" r="18" fill="#0f766e"/><text x="78" y="248" text-anchor="middle" class="secn">1</text>
+  <text x="108" y="251" class="sec">등록 방법 — Realm JSON을 처음 기동할 때 Import</text>
+
+  <!-- 입력 2개 -->
+  <g filter="url(#sh)"><rect x="60" y="280" width="330" height="128" rx="12" class="card"/></g>
+  <text x="80" y="310" class="lbl">GIT에 커밋</text>
+  <text x="80" y="336" class="bb mono" style="font-size:14px">infra/keycloak/import/</text>
+  <text x="80" y="356" class="bb mono" style="font-size:14px">pmart-employees-realm.json</text>
+  <text x="80" y="384" class="s">clients 4개 · users(Service Account)</text>
+  <text x="80" y="400" class="s">clientScopeMappings · Secret 자리는 ${…}</text>
+
+  <g filter="url(#sh)"><rect x="60" y="428" width="330" height="128" rx="12" fill="#fffbeb" stroke="#fcd34d" stroke-width="1.4"/></g>
+  <text x="80" y="458" class="lbl" style="fill:#b45309">GIT 제외</text>
+  <text x="80" y="484" class="bb mono" style="font-size:14px">.env</text>
+  <text x="80" y="510" class="s">Client Secret 4개 · PUBLIC_BASE_URL ·</text>
+  <text x="80" y="528" class="s">BACKOFFICE_ORIGIN · WEBMAIL_ORIGIN</text>
+
+  <path d="M390,344 L440,344 L440,410 L470,410" class="flow" marker-end="url(#ar)"/>
+  <path d="M390,492 L440,492 L440,430 L470,430" class="flow" marker-end="url(#ar)"/>
+
+  <!-- Compose -->
+  <g filter="url(#sh)"><rect x="478" y="300" width="330" height="236" rx="12" class="card"/></g>
+  <text x="498" y="330" class="ct">Docker Compose</text>
+  <text x="498" y="360" class="lbl">파일 → 읽기 전용 볼륨</text>
+  <text x="498" y="384" class="s mono">./infra/keycloak/import</text>
+  <text x="498" y="402" class="s mono">  :/opt/keycloak/data/import:ro</text>
+  <text x="498" y="434" class="lbl">값 → 컨테이너 환경변수</text>
+  <text x="498" y="458" class="s mono">EMPLOYEE_AUTH_CLIENT_SECRET: …</text>
+  <text x="498" y="476" class="s mono">WEBMAIL_CLIENT_SECRET: … (외 2개)</text>
+  <text x="498" y="508" class="lbl">명령</text>
+  <text x="590" y="508" class="s mono">start --import-realm</text>
+
+  <line x1="808" y1="418" x2="852" y2="418" class="flow" marker-end="url(#ar)"/>
+
+  <!-- Keycloak -->
+  <g filter="url(#sh)"><rect x="860" y="300" width="380" height="236" rx="12" fill="#ffffff" stroke="#0f766e" stroke-width="2"/></g>
+  <text x="880" y="330" class="ct">Keycloak 부트스트랩</text>
+  <text x="880" y="362" class="b">① /opt/keycloak/data/import의 JSON 읽기</text>
+  <text x="880" y="390" class="b">② <tspan class="mono" style="font-size:14px">${…}</tspan> → 컨테이너 환경변수 값으로 치환</text>
+  <text x="880" y="418" class="b">③ Realm <tspan class="mono" style="font-size:14px">pmart-employees</tspan> 있나?</text>
+  <text x="900" y="444" class="b" style="fill:#15803d">없음 → Realm·Client·SA 생성</text>
+  <text x="900" y="468" class="b" style="fill:#64748b">있음 → 전체 건너뜀 (IGNORE_EXISTING)</text>
+  <text x="880" y="500" class="s">Import가 끝나야 health/ready = 200</text>
+  <text x="880" y="518" class="s">→ 의존 서비스 시작 (depends_on: service_healthy)</text>
+
+  <line x1="1240" y1="418" x2="1284" y2="418" class="flow" marker-end="url(#ar)"/>
+
+  <g filter="url(#sh)"><rect x="1292" y="300" width="248" height="236" rx="12" class="card"/></g>
+  <text x="1312" y="330" class="ct">PostgreSQL</text>
+  <text x="1312" y="354" class="s mono">keycloak DB</text>
+  <text x="1312" y="388" class="b">Client 4개 저장</text>
+  <text x="1312" y="410" class="b">(Secret = .env 값)</text>
+  <text x="1312" y="440" class="b">Service Account 2개</text>
+  <text x="1312" y="462" class="b">역할 매핑</text>
+  <text x="1312" y="484" class="b">Role Scope Mapping</text>
+
+  <!-- Secret 일치 설명 -->
+  <rect x="478" y="562" width="1062" height="56" rx="10" fill="#ecfdf5" stroke="#a7f3d0"/>
+  <text x="498" y="586" class="bb">같은 .env 값이 양쪽으로 감 → Keycloak에 등록된 Secret과 서비스가 쓰는 Secret이 처음부터 일치</text>
+  <text x="498" y="606" class="s">Keycloak: Realm JSON 자리표시자 · employee-auth / employee-service: application.yml의 client-secret · Roundcube: config의 oauth_client_secret</text>
+
+  <!-- ===================== 2. Client 4개 ===================== -->
+  <circle cx="78" cy="672" r="18" fill="#0f766e"/><text x="78" y="678" text-anchor="middle" class="secn">2</text>
+  <text x="108" y="681" class="sec">등록된 Client 4개</text>
+
+  <!-- 그룹 라벨 -->
+  <rect x="60" y="706" width="730" height="34" rx="8" fill="#0f766e"/>
+  <text x="425" y="729" text-anchor="middle" style="font-size:15px;font-weight:800;fill:#fff">사용자 로그인 — Authorization Code + PKCE(S256)</text>
+  <rect x="810" y="706" width="730" height="34" rx="8" fill="#7c3aed"/>
+  <text x="1175" y="729" text-anchor="middle" style="font-size:15px;font-weight:800;fill:#fff">서버 간 호출 — Client Credentials + Service Account</text>
+
+  <!-- 카드 1: pmart-employee-auth -->
+  <g filter="url(#sh)"><rect x="60" y="752" width="355" height="500" rx="14" class="card"/></g>
+  <text x="80" y="786" class="mono" style="font-size:17px;font-weight:800;fill:#0f766e">pmart-employee-auth</text>
+  <text x="80" y="812" class="bb">직원 로그인 (OIDC Client)</text>
+  <text x="80" y="834" class="s">백오피스 · Flutter 앱 공통</text>
+  <text x="80" y="868" class="lbl">사용하는 쪽</text>
+  <text x="80" y="890" class="b">Employee Auth Service</text>
+  <text x="80" y="910" class="s mono">application.yml client-id</text>
+  <text x="80" y="944" class="lbl">REDIRECT URI</text>
+  <text x="80" y="966" class="s mono">{PUBLIC_BASE_URL}</text>
+  <text x="80" y="984" class="s mono">  /employee-auth/callback</text>
+  <text x="80" y="1018" class="lbl">로그아웃 후 이동 허용</text>
+  <text x="80" y="1040" class="s mono">{BACKOFFICE_ORIGIN}/*</text>
+  <line x1="80" y1="1064" x2="395" y2="1064" stroke="#e2e8f0"/>
+  <text x="80" y="1090" class="k">standardFlow (Code)</text><text x="395" y="1090" text-anchor="end" class="on">ON</text>
+  <text x="80" y="1114" class="k">PKCE</text><text x="395" y="1114" text-anchor="end" class="on">S256</text>
+  <text x="80" y="1138" class="k">serviceAccounts</text><text x="395" y="1138" text-anchor="end" class="off">OFF</text>
+  <text x="80" y="1162" class="k">directAccessGrants (password)</text><text x="395" y="1162" text-anchor="end" class="off">OFF</text>
+  <text x="80" y="1186" class="k">implicitFlow</text><text x="395" y="1186" text-anchor="end" class="off">OFF</text>
+  <text x="80" y="1210" class="k">publicClient</text><text x="395" y="1210" text-anchor="end" class="off">false (Confidential)</text>
+  <text x="80" y="1234" class="k">fullScopeAllowed</text><text x="395" y="1234" text-anchor="end" class="off">false</text>
+
+  <!-- 카드 2: pmart-webmail -->
+  <g filter="url(#sh)"><rect x="435" y="752" width="355" height="500" rx="14" class="card"/></g>
+  <text x="455" y="786" class="mono" style="font-size:17px;font-weight:800;fill:#0f766e">pmart-webmail</text>
+  <text x="455" y="812" class="bb">웹메일 SSO (Roundcube)</text>
+  <text x="455" y="834" class="s">받은 토큰으로 IMAP·SMTP OAuth 로그인</text>
+  <text x="455" y="868" class="lbl">사용하는 쪽</text>
+  <text x="455" y="890" class="b">Roundcube</text>
+  <text x="455" y="910" class="s mono">infra/roundcube/config</text>
+  <text x="455" y="944" class="lbl">REDIRECT URI</text>
+  <text x="455" y="966" class="s mono">{WEBMAIL_ORIGIN}</text>
+  <text x="455" y="984" class="s mono">  /index.php/login/oauth</text>
+  <text x="455" y="1018" class="lbl">로그아웃 후 이동 허용</text>
+  <text x="455" y="1040" class="s mono">{WEBMAIL_ORIGIN}/*</text>
+  <line x1="455" y1="1064" x2="770" y2="1064" stroke="#e2e8f0"/>
+  <text x="455" y="1090" class="k">standardFlow (Code)</text><text x="770" y="1090" text-anchor="end" class="on">ON</text>
+  <text x="455" y="1114" class="k">PKCE</text><text x="770" y="1114" text-anchor="end" class="on">S256</text>
+  <text x="455" y="1138" class="k">serviceAccounts</text><text x="770" y="1138" text-anchor="end" class="off">OFF</text>
+  <text x="455" y="1162" class="k">directAccessGrants (password)</text><text x="770" y="1162" text-anchor="end" class="off">OFF</text>
+  <text x="455" y="1186" class="k">implicitFlow</text><text x="770" y="1186" text-anchor="end" class="off">OFF</text>
+  <text x="455" y="1210" class="k">publicClient</text><text x="770" y="1210" text-anchor="end" class="off">false (Confidential)</text>
+  <text x="455" y="1234" class="k">fullScopeAllowed</text><text x="770" y="1234" text-anchor="end" class="off">false</text>
+
+  <!-- 카드 3: pmart-employee-service -->
+  <g filter="url(#sh)"><rect x="810" y="752" width="355" height="500" rx="14" class="card"/></g>
+  <text x="830" y="786" class="mono" style="font-size:17px;font-weight:800;fill:#6d28d9">pmart-employee-service</text>
+  <text x="830" y="812" class="bb">직원 계정 프로비저닝</text>
+  <text x="830" y="834" class="s">인사팀 등록 → Keycloak 계정 생성·비활성화</text>
+  <text x="830" y="868" class="lbl" style="fill:#6d28d9">사용하는 쪽</text>
+  <text x="830" y="890" class="b">Employee Service</text>
+  <text x="830" y="910" class="s mono">application.yml client-id</text>
+  <text x="830" y="944" class="lbl" style="fill:#6d28d9">REDIRECT URI</text>
+  <text x="830" y="966" class="s">없음 — 브라우저를 거치지 않음</text>
+  <text x="830" y="1018" class="lbl" style="fill:#6d28d9">SERVICE ACCOUNT</text>
+  <text x="830" y="1040" class="s mono">service-account-pmart-employee-service</text>
+  <line x1="830" y1="1064" x2="1145" y2="1064" stroke="#e2e8f0"/>
+  <text x="830" y="1090" class="k">standardFlow (Code)</text><text x="1145" y="1090" text-anchor="end" class="off">OFF</text>
+  <text x="830" y="1114" class="k">serviceAccounts</text><text x="1145" y="1114" text-anchor="end" class="on">ON</text>
+  <text x="830" y="1138" class="k">역할</text><text x="1145" y="1138" text-anchor="end" class="on mono" style="font-size:13px">manage-users</text>
+  <text x="830" y="1162" class="k">directAccessGrants (password)</text><text x="1145" y="1162" text-anchor="end" class="off">OFF</text>
+  <text x="830" y="1186" class="k">implicitFlow</text><text x="1145" y="1186" text-anchor="end" class="off">OFF</text>
+  <text x="830" y="1210" class="k">publicClient</text><text x="1145" y="1210" text-anchor="end" class="off">false (Confidential)</text>
+  <text x="830" y="1234" class="k">fullScopeAllowed</text><text x="1145" y="1234" text-anchor="end" class="off">false</text>
+
+  <!-- 카드 4: pmart-employee-auth-bootstrap -->
+  <g filter="url(#sh)"><rect x="1185" y="752" width="355" height="500" rx="14" class="card"/></g>
+  <text x="1205" y="786" class="mono" style="font-size:15.5px;font-weight:800;fill:#6d28d9">pmart-employee-auth-bootstrap</text>
+  <text x="1205" y="812" class="bb">테스트 인사팀 계정 생성</text>
+  <text x="1205" y="834" class="s">Employee Auth 부팅 시 1회 (중복 생성 안 함)</text>
+  <text x="1205" y="868" class="lbl" style="fill:#6d28d9">사용하는 쪽</text>
+  <text x="1205" y="890" class="b">Employee Auth Service</text>
+  <text x="1205" y="910" class="s mono">bootstrap-client-id</text>
+  <text x="1205" y="944" class="lbl" style="fill:#6d28d9">REDIRECT URI</text>
+  <text x="1205" y="966" class="s">없음 — 브라우저를 거치지 않음</text>
+  <text x="1205" y="1018" class="lbl" style="fill:#6d28d9">SERVICE ACCOUNT</text>
+  <text x="1205" y="1040" class="s mono">service-account-pmart-employee-</text>
+  <text x="1205" y="1056" class="s mono">  auth-bootstrap</text>
+  <line x1="1205" y1="1068" x2="1520" y2="1068" stroke="#e2e8f0"/>
+  <text x="1205" y="1090" class="k">standardFlow (Code)</text><text x="1520" y="1090" text-anchor="end" class="off">OFF</text>
+  <text x="1205" y="1114" class="k">serviceAccounts</text><text x="1520" y="1114" text-anchor="end" class="on">ON</text>
+  <text x="1205" y="1138" class="k">역할</text><text x="1520" y="1138" text-anchor="end" class="on mono" style="font-size:13px">manage-users</text>
+  <text x="1205" y="1162" class="k">directAccessGrants (password)</text><text x="1520" y="1162" text-anchor="end" class="off">OFF</text>
+  <text x="1205" y="1186" class="k">implicitFlow</text><text x="1520" y="1186" text-anchor="end" class="off">OFF</text>
+  <text x="1205" y="1210" class="k">publicClient</text><text x="1520" y="1210" text-anchor="end" class="off">false (Confidential)</text>
+  <text x="1205" y="1234" class="k">fullScopeAllowed</text><text x="1520" y="1234" text-anchor="end" class="off">false</text>
+
+  <!-- 공통 설정 -->
+  <g filter="url(#sh)"><rect x="60" y="1272" width="1480" height="118" rx="12" fill="#ecfdf5" stroke="#6ee7b7" stroke-width="1.4"/></g>
+  <text x="84" y="1302" class="ct">4개 공통 — 왜 이렇게 했나</text>
+  <text x="84" y="1332" class="b"><tspan class="bb">Confidential + client-secret</tspan>: Flutter 앱 · 백오피스 · Gateway는 Client가 아님 (설계 원칙 3)</text>
+  <text x="84" y="1356" class="b"><tspan class="bb">password · Implicit OFF</tspan>: 직원 로그인은 Code + PKCE만 (설계 원칙 4)</text>
+  <text x="820" y="1332" class="b"><tspan class="bb">fullScopeAllowed=false</tspan>: 토큰에 필요한 역할만 (D23)</text>
+  <text x="820" y="1356" class="b"><tspan class="bb">webOrigins 비움</tspan>: 브라우저 → Keycloak CORS 없음 (CORS는 Gateway, D16)</text>
+  <text x="84" y="1378" class="s">로그인 Client 2개는 PKCE를 Client 속성(pkce.code.challenge.method=S256)으로 강제 → code_challenge 없는 요청은 Keycloak이 거부</text>
+
+  <!-- ===================== 3. Service Account 권한 ===================== -->
+  <circle cx="78" cy="1452" r="18" fill="#7c3aed"/><text x="78" y="1458" text-anchor="middle" class="secn">3</text>
+  <text x="108" y="1461" class="sec">Service Account 권한 — 두 설정의 교집합만 토큰에 들어감</text>
+
+  <g filter="url(#sh)"><rect x="60" y="1490" width="1480" height="300" rx="14" class="card"/></g>
+  <!-- 벤 다이어그램 -->
+  <circle cx="345" cy="1665" r="115" fill="#7c3aed" fill-opacity="0.10" stroke="#7c3aed" stroke-width="2"/>
+  <circle cx="475" cy="1665" r="115" fill="#0f766e" fill-opacity="0.10" stroke="#0f766e" stroke-width="2"/>
+  <text x="250" y="1524" text-anchor="middle" style="font-size:14px;font-weight:800;fill:#6d28d9">Role Mapping</text>
+  <text x="250" y="1542" text-anchor="middle" class="s">SA 사용자가 가진 역할</text>
+  <text x="570" y="1524" text-anchor="middle" style="font-size:14px;font-weight:800;fill:#0f766e">Role Scope Mapping</text>
+  <text x="570" y="1542" text-anchor="middle" class="s">토큰에 넣어도 되는 역할</text>
+  <text x="410" y="1664" text-anchor="middle" class="mono" style="font-size:13px;font-weight:800;fill:#0f172a">manage-users</text>
+  <text x="410" y="1684" text-anchor="middle" class="s">= 토큰 역할</text>
+  <text x="84" y="1756" class="s">fullScopeAllowed</text><text x="84" y="1774" class="s">=false일 때 적용</text>
+
+  <text x="680" y="1530" class="lbl" style="fill:#6d28d9">ROLE MAPPING — JSON users[]</text>
+  <text x="680" y="1554" class="s mono">"username": "service-account-pmart-employee-service",</text>
+  <text x="680" y="1572" class="s mono">"serviceAccountClientId": "pmart-employee-service",</text>
+  <text x="680" y="1590" class="s mono">"clientRoles": { "realm-management": ["manage-users"] }</text>
+
+  <text x="680" y="1626" class="lbl">ROLE SCOPE MAPPING — JSON clientScopeMappings</text>
+  <text x="680" y="1650" class="s mono">"realm-management": [</text>
+  <text x="680" y="1668" class="s mono">  { "client": "pmart-employee-service", "roles": ["manage-users"] },</text>
+  <text x="680" y="1686" class="s mono">  { "client": "pmart-employee-auth-bootstrap", "roles": ["manage-users"] } ]</text>
+
+  <rect x="680" y="1710" width="836" height="62" rx="10" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="700" y="1736" class="bb" style="fill:#991b1b">한쪽만 바꾸면 토큰에서 역할이 빠져 Admin API가 403 (Scope 축소는 실측, D23)</text>
+  <text x="700" y="1758" class="s">manage-users 하나로 계정 생성·조회·수정·비활성화·그룹 조회까지 동작 (view-users 등 다른 역할 불필요)</text>
+
+  <!-- ===================== 4. 자동 생성 Client ===================== -->
+  <circle cx="78" cy="1852" r="18" fill="#0f766e"/><text x="78" y="1858" text-anchor="middle" class="secn">4</text>
+  <text x="108" y="1861" class="sec">Realm을 만들 때 Keycloak이 자동으로 만드는 Client 6개</text>
+
+  <g filter="url(#sh)"><rect x="60" y="1890" width="1480" height="130" rx="14" class="card"/></g>
+  <g class="mono" style="font-size:14px">
+    <rect x="84" y="1914" width="120" height="34" rx="17" fill="#f1f5f9"/><text x="144" y="1936" text-anchor="middle" class="mono" style="font-size:14px">account</text>
+    <rect x="216" y="1914" width="180" height="34" rx="17" fill="#fee2e2" stroke="#fca5a5"/><text x="306" y="1936" text-anchor="middle" class="mono" style="font-size:14px;fill:#991b1b">account-console</text>
+    <rect x="408" y="1914" width="120" height="34" rx="17" fill="#f1f5f9"/><text x="468" y="1936" text-anchor="middle" class="mono" style="font-size:14px">admin-cli</text>
+    <rect x="540" y="1914" width="100" height="34" rx="17" fill="#f1f5f9"/><text x="590" y="1936" text-anchor="middle" class="mono" style="font-size:14px">broker</text>
+    <rect x="652" y="1914" width="190" height="34" rx="17" fill="#ede9fe" stroke="#c4b5fd"/><text x="747" y="1936" text-anchor="middle" class="mono" style="font-size:14px;fill:#5b21b6">realm-management</text>
+    <rect x="854" y="1914" width="240" height="34" rx="17" fill="#f1f5f9"/><text x="974" y="1936" text-anchor="middle" class="mono" style="font-size:14px">security-admin-console</text>
+  </g>
+  <text x="84" y="1980" class="b"><tspan class="mono" style="font-size:14px;fill:#5b21b6">realm-management</tspan>: Admin API 권한(<tspan class="mono" style="font-size:14px">manage-users</tspan> 등)이 정의된 Client → ③의 역할이 여기 소속</text>
+  <text x="84" y="2004" class="b"><tspan class="mono" style="font-size:14px;fill:#991b1b">account-console</tspan>: 직원 계정 콘솔 → 미결정 #12(이메일 변경으로 다른 직원 메일함 접근) 결함의 진입점</text>
+  <text x="1120" y="1936" class="s">JSON에 적지 않아도 생성됨</text>
+  <text x="1120" y="1954" class="s">PoC가 등록한 것은 ②의 4개뿐</text>
+
+  <!-- ===================== 5. 바꿀 때 ===================== -->
+  <g filter="url(#sh)"><rect x="60" y="2060" width="1480" height="230" rx="16" fill="url(#sum)"/></g>
+  <text x="90" y="2102" style="font-size:22px;font-weight:800;fill:#ffffff">등록 내용을 바꿀 때 — JSON 수정 + 재시작으로는 반영되지 않음</text>
+  <text x="90" y="2130" style="font-size:14.5px;fill:#a7f3d0">Realm이 이미 있으면 Import 전체를 건너뜀 (IGNORE_EXISTING). --import-realm은 최초 생성용</text>
+
+  <rect x="90" y="2152" width="450" height="114" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.4"/>
+  <text x="110" y="2182" style="font-size:16px;font-weight:800;fill:#6ee7b7">✗ JSON 수정 → restart</text>
+  <text x="110" y="2208" style="font-size:14px;fill:#d1fae5">로그: "Realm 'pmart-employees'</text>
+  <text x="110" y="2228" style="font-size:14px;fill:#d1fae5">already exists. Import skipped"</text>
+  <text x="110" y="2252" style="font-size:13px;fill:#a7f3d0">→ 변경 사항이 DB에 들어가지 않음</text>
+
+  <rect x="565" y="2152" width="450" height="114" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.4"/>
+  <text x="585" y="2182" style="font-size:16px;font-weight:800;fill:#6ee7b7">✓ 개발 환경: 새로 만들기</text>
+  <text x="585" y="2208" class="mono" style="font-size:13.5px;fill:#d1fae5">docker compose down -v</text>
+  <text x="585" y="2228" class="mono" style="font-size:13.5px;fill:#d1fae5">docker compose up -d --build</text>
+  <text x="585" y="2252" style="font-size:13px;fill:#a7f3d0">→ 첫 기동과 같은 경로로 JSON 전체 반영</text>
+
+  <rect x="1040" y="2152" width="470" height="114" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#6ee7b7" stroke-opacity="0.4"/>
+  <text x="1060" y="2182" style="font-size:16px;font-weight:800;fill:#6ee7b7">✓ 데이터 유지: 직접 변경 + JSON 동기화</text>
+  <text x="1060" y="2208" class="mono" style="font-size:13.5px;fill:#d1fae5">docker compose exec keycloak kcadm.sh …</text>
+  <text x="1060" y="2228" style="font-size:14px;fill:#d1fae5">같은 내용을 JSON에도 반영</text>
+  <text x="1060" y="2252" style="font-size:13px;fill:#a7f3d0">→ 다음 새 환경에서도 재현되도록</text>
+
+  <text x="60" y="2316" class="s">근거: infra/keycloak/import/pmart-employees-realm.json · compose.yaml · services/*/src/main/resources/application.yml · infra/roundcube/config · D23 · 관련 그림: keycloak-oauth-client-registration.svg</text>
+</svg>

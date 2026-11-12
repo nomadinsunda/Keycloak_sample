@@ -47,7 +47,7 @@ sequenceDiagram
     Note over OP,RC: [2] Compose 기동 — Keycloak에 환경변수와 Import 파일 전달
     OP->>DC: docker compose up
     DC->>PG: (DB가 비어 있을 때만) init 스크립트로 keycloak DB · 전용 계정 생성
-    DC->>KC: 컨테이너 시작: start --import-realm<br/>환경변수: Client Secret 4개 · URL (compose.yaml keycloak.environment)<br/>볼륨: ./infra/keycloak/import → /opt/keycloak/data/import (읽기 전용)
+    DC->>KC: 컨테이너 시작: start --import-realm<br/>환경변수: Client Secret 4개 · URL · IAM_DOMAIN · MAIL_NOREPLY_PASSWORD (compose.yaml keycloak.environment)<br/>볼륨: ./infra/keycloak/import → /opt/keycloak/data/import (읽기 전용)
     KC->>PG: master Realm 초기화 (첫 기동)
 
     %% ================================================================
@@ -74,7 +74,7 @@ sequenceDiagram
     DC->>RC: 환경변수 WEBMAIL_CLIENT_SECRET<br/>config/oauth.inc.php: client_id pmart-webmail · PKCE S256
     EAS->>KC: Token Endpoint · Basic(pmart-employee-auth : Secret) — 로그인 Code 교환<br/>Basic(pmart-employee-auth-bootstrap : Secret) — client_credentials
     ESV->>KC: Token Endpoint · Basic(pmart-employee-service : Secret) — client_credentials
-    RC->>KC: Token Endpoint · Basic(pmart-webmail : Secret) — 웹메일 로그인 Code 교환
+    RC->>KC: Token Endpoint · 폼 본문 client_id·client_secret(pmart-webmail) — 웹메일 로그인 Code 교환<br/>(Roundcube는 Basic 대신 client_secret_post 방식)
     KC->>KC: 등록된 Secret과 비교 → 일치해야 토큰 발급
     Note over EAS,KC: 2026-11-12 확인: Client 4개 모두 Keycloak에 저장된 Secret = .env 값 (해시로 비교, 값은 출력하지 않음)
 
