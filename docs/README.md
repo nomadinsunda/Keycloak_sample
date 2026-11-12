@@ -43,7 +43,7 @@ PMart는 고객·라이더·직원용 Auth Service를 각각 독립적으로 운
 5. [Gateway 라우팅](architecture/05-gateway-routing.md)
 6. [직원 계정 프로비저닝](architecture/06-employee-provisioning.md)
 7. 인프라: [Keycloak 설정](infrastructure/keycloak-setup.md), [LAN 메일](infrastructure/lan-mail.md)
-8. [결정 기록](decisions.md), [미결정 항목](open-questions.md), [구현 로드맵](roadmap.md), [용어집](glossary.md)
+8. [결정 기록](decisions.md), [미결정 항목](open-questions.md)(상세 검토: [issues/](issues/)), [구현 로드맵](roadmap.md), [용어집](glossary.md)
 
 ## 상태 표기
 

@@ -414,7 +414,7 @@ healthcheck 수정 후 새 환경(`down -v` → `up`)에서 인사팀 등록부�
 - **재현**: 앱에서 로그인 시작 → Custom Tab의 Keycloak 화면에서 5분 넘게 머문 뒤 로그인 → Callback이 `invalid_state`(로그인 트랜잭션 `login-transaction-ttl: 5m` 만료)로 실패. 그 다음 앱에서 다시 로그인하자 **Keycloak 로그인 화면 없이 바로 앱으로 복귀해 로그인 완료**(사일런트 로그인)
 - **원인**: D20의 "앱 로그인 직후 Keycloak 세션 종료"는 `KeycloakOidcClient.exchangeAndVerify()` 안에서 Code 교환으로 받은 Keycloak Refresh Token으로 로그아웃하는 방식. `invalid_state`는 Code 교환 **전에** 실패하므로 세션을 끊을 수단(Keycloak 토큰)이 없고, Keycloak SSO 세션 쿠키가 기기 Chrome에 그대로 남음
 - **설계와 다른 점**: D20은 "앱 로그인 뒤 기기 브라우저에 Keycloak 세션이 남지 않는다"를 전제로 함. 성공 경로에서만 성립하고 실패 경로(`invalid_state`, 사용자가 Callback 직전에 Custom Tab을 닫은 경우 등)에서는 깨짐. 직원 공용 기기라면 다음 사람이 이전 직원 계정으로 비밀번호 없이 로그인할 수 있음
-- **조치 후보** (미정, [open-questions #13](open-questions.md)):
+- **조치 후보** (미정, [issues/13](issues/13-mobile-login-callback-failure.md)):
   - A. `invalid_state`로 실패하면 Keycloak `end_session`(로그아웃) 주소로 보내 브라우저 세션을 끊은 뒤 앱으로 복귀
   - B. 앱 로그인에 `prompt=login` 또는 `max_age=0` 사용 — 다만 D20에서 `prompt=login`은 아이디 칸 고정 문제로 뺐으므로 재검증 필요
   - C. 앱 Client용 Keycloak 세션 수명을 아주 짧게(SSO Session Idle 등) — Realm 전체 설정과 충돌 여부 확인 필요
@@ -423,7 +423,7 @@ healthcheck 수정 후 새 환경(`down -v` → `up`)에서 인사팀 등록부�
 
 - **재현**: 결함 1과 같은 상황. Custom Tab이 앱으로 돌아오지 않고 `http://localhost:3000/?login_error=invalid_state`로 이동해 `ERR_CONNECTION_REFUSED` 표시(기기에는 `adb reverse`가 8080만 연결됨). 사용자는 Custom Tab을 직접 닫아야 하고 앱은 실패 원인을 알 수 없음
 - **원인**: `AuthController.callback()`은 로그인 트랜잭션을 찾아야 앱/백오피스를 구분할 수 있음. 트랜잭션이 없으면(`invalid_state`) 구분할 정보가 없어 무조건 `loginFailed()` → `BACKOFFICE_ORIGIN`으로 보냄 (코드 주석에도 "어느 클라이언트인지 알 수 없으므로 백오피스로")
-- **조치 후보** (미정, [open-questions #13](open-questions.md)):
+- **조치 후보** (미정, [issues/13](issues/13-mobile-login-callback-failure.md)):
   - A. 앱과 백오피스의 Callback 경로(Redirect URI)를 나눠, 트랜잭션이 없어도 경로로 클라이언트를 구분
   - B. 실패 시 백오피스 대신 Employee Auth Service의 중립 오류 페이지(앱 복귀 링크 포함)를 보여 줌 — 단, Employee Auth는 화면을 만들지 않는 원칙과 충돌
   - C. 앱 로그인 트랜잭션 수명만 늘림 — 증상만 줄이고 원인은 남음

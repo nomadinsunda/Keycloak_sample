@@ -1,0 +1,326 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560" role="img" aria-labelledby="t d">
+  <title id="t">OIDC prompt 파라미터 — PoC 적용</title>
+  <desc id="d">PMart 직원 IAM PoC에서 OIDC prompt 파라미터(생략, login, none, consent, select_account)를 어떻게 적용했는지: 실제 인가 요청, 클라이언트별 결과, prompt=login을 뺀 이유, 실패 경로에서 남은 사일런트 로그인 문제 (Keycloak 26.8.1에서 확인한 값)</desc>
+  <defs>
+    <linearGradient id="hdr" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c4a6e"/>
+      <stop offset="1" stop-color="#1e40af"/>
+    </linearGradient>
+    <linearGradient id="sum" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0c4a6e"/>
+      <stop offset="1" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <filter id="sh" x="-5%" y="-5%" width="110%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#0c4a6e" flood-opacity="0.10"/>
+    </filter>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d4ed8"/>
+    </marker>
+    <marker id="arR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b91c1c"/>
+    </marker>
+    <style>
+      text { font-family: 'Pretendard','Noto Sans KR','Malgun Gothic','Apple SD Gothic Neo',sans-serif; fill: #1e293b; }
+      .mono { font-family: 'JetBrains Mono','D2Coding','Consolas','Menlo',monospace; }
+      .h1 { font-size: 44px; font-weight: 800; fill: #ffffff; }
+      .sub { font-size: 19px; fill: #bae6fd; }
+      .sec { font-size: 26px; font-weight: 800; fill: #0c4a6e; }
+      .secn { font-size: 18px; font-weight: 800; fill: #ffffff; }
+      .ct { font-size: 18px; font-weight: 800; fill: #0f172a; }
+      .b { font-size: 15px; fill: #334155; }
+      .bb { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .s { font-size: 13px; fill: #64748b; }
+      .lbl { font-size: 13px; font-weight: 800; fill: #1d4ed8; letter-spacing: 0.6px; }
+      .code { font-size: 14px; fill: #e2e8f0; white-space: pre; }
+      .card { fill: #ffffff; stroke: #e2e8f0; stroke-width: 1.2; }
+      .flow { stroke: #1d4ed8; stroke-width: 2.2; fill: none; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="2560" fill="#f0f7ff"/>
+
+  <!-- ===================== 헤더 ===================== -->
+  <rect width="1600" height="190" fill="url(#hdr)"/>
+  <circle cx="1480" cy="40" r="120" fill="#ffffff" opacity="0.04"/>
+  <text x="60" y="84" class="h1">OIDC <tspan class="mono">prompt</tspan> — 우리 PoC에서는?</text>
+  <text x="60" y="122" class="sub">prompt = Keycloak에게 "기존 SSO 세션을 어떻게 다루고, 사용자에게 무엇을 다시 물을지" 지시하는 인가 요청 파라미터</text>
+  <text x="60" y="160" style="font-size:15px;fill:#93c5fd">결론: PoC는 prompt를 보내지 않음. 세션 처리는 prompt 대신 "앱 로그인 직후 Keycloak 세션 종료(D20)"와 "PMart Refresh Token"으로 함</text>
+  <rect x="1250" y="52" width="290" height="38" rx="19" fill="#ffffff" fill-opacity="0.13" stroke="#93c5fd" stroke-opacity="0.5"/>
+  <text x="1395" y="77" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#e0f2fe">Keycloak 26.8.1 · 2026-11-12 확인</text>
+
+  <!-- ===================== 1. prompt 값과 PoC 적용 ===================== -->
+  <circle cx="78" cy="242" r="18" fill="#1d4ed8"/><text x="78" y="248" text-anchor="middle" class="secn">1</text>
+  <text x="108" y="251" class="sec">prompt 값별 — Keycloak 지원 여부와 PoC 적용</text>
+
+  <!-- 카드 공통: 폭 280, 간격 20, y 280~640 -->
+  <!-- (생략) -->
+  <g filter="url(#sh)"><rect x="60" y="280" width="280" height="360" rx="14" fill="#ffffff" stroke="#16a34a" stroke-width="2.4"/></g>
+  <rect x="60" y="280" width="280" height="8" rx="4" fill="#16a34a"/>
+  <text x="80" y="326" class="mono" style="font-size:22px;font-weight:800;fill:#15803d">(생략)</text>
+  <rect x="194" y="306" width="128" height="28" rx="14" fill="#dcfce7"/>
+  <text x="258" y="325" text-anchor="middle" style="font-size:13.5px;font-weight:800;fill:#15803d">PoC 사용 ✓</text>
+  <text x="80" y="364" class="lbl">의미</text>
+  <text x="80" y="388" class="b">세션 있음 → 화면 없이 Code</text>
+  <text x="80" y="410" class="b">세션 없음 → 로그인 화면</text>
+  <text x="80" y="446" class="lbl">KEYCLOAK</text>
+  <text x="80" y="470" class="b">기본 동작</text>
+  <text x="80" y="506" class="lbl">POC</text>
+  <text x="80" y="530" class="b">백오피스 · 앱 · 웹메일 모두</text>
+  <text x="80" y="552" class="b">이 방식으로 로그인 요청</text>
+  <text x="80" y="582" class="s mono">authorizationUrl()에</text>
+  <text x="80" y="600" class="s mono">prompt 파라미터 없음</text>
+
+  <!-- login -->
+  <g filter="url(#sh)"><rect x="360" y="280" width="280" height="360" rx="14" class="card"/></g>
+  <rect x="360" y="280" width="280" height="8" rx="4" fill="#d97706"/>
+  <text x="380" y="326" class="mono" style="font-size:22px;font-weight:800;fill:#b45309">login</text>
+  <rect x="490" y="306" width="132" height="28" rx="14" fill="#fef3c7"/>
+  <text x="556" y="325" text-anchor="middle" style="font-size:13.5px;font-weight:800;fill:#b45309">썼다가 제거</text>
+  <text x="380" y="364" class="lbl">의미</text>
+  <text x="380" y="388" class="b">세션이 있어도 다시 인증</text>
+  <text x="380" y="446" class="lbl">KEYCLOAK</text>
+  <text x="380" y="470" class="b">지원</text>
+  <text x="380" y="506" class="lbl">POC</text>
+  <text x="380" y="530" class="b">앱 로그인에 썼으나,</text>
+  <text x="380" y="552" class="b">아이디 칸이 이전 계정으로</text>
+  <text x="380" y="574" class="b">고정되어 제거 (④ 참고)</text>
+  <text x="380" y="604" class="s">→ 대신 로그인 직후 세션 종료</text>
+
+  <!-- none -->
+  <g filter="url(#sh)"><rect x="660" y="280" width="280" height="360" rx="14" class="card"/></g>
+  <rect x="660" y="280" width="280" height="8" rx="4" fill="#94a3b8"/>
+  <text x="680" y="326" class="mono" style="font-size:22px;font-weight:800;fill:#475569">none</text>
+  <rect x="808" y="306" width="114" height="28" rx="14" fill="#f1f5f9"/>
+  <text x="865" y="325" text-anchor="middle" style="font-size:13.5px;font-weight:800;fill:#475569">사용 안 함</text>
+  <text x="680" y="364" class="lbl">의미</text>
+  <text x="680" y="388" class="b">화면 없이 인증 시도,</text>
+  <text x="680" y="410" class="b">못 하면 <tspan class="mono" style="font-size:13.5px">error=login_required</tspan></text>
+  <text x="680" y="446" class="lbl">KEYCLOAK</text>
+  <text x="680" y="470" class="b">지원</text>
+  <text x="680" y="506" class="lbl">POC</text>
+  <text x="680" y="530" class="b">로그인 유지는 PMart</text>
+  <text x="680" y="552" class="b">Refresh Token(8시간)이 담당</text>
+  <text x="680" y="574" class="b">→ 사일런트 인증이 필요 없음</text>
+  <text x="680" y="604" class="s">비밀번호 입력을 대체하지 않음</text>
+
+  <!-- consent -->
+  <g filter="url(#sh)"><rect x="960" y="280" width="280" height="360" rx="14" class="card"/></g>
+  <rect x="960" y="280" width="280" height="8" rx="4" fill="#94a3b8"/>
+  <text x="980" y="326" class="mono" style="font-size:22px;font-weight:800;fill:#475569">consent</text>
+  <rect x="1108" y="306" width="114" height="28" rx="14" fill="#f1f5f9"/>
+  <text x="1165" y="325" text-anchor="middle" style="font-size:13.5px;font-weight:800;fill:#475569">사용 안 함</text>
+  <text x="980" y="364" class="lbl">의미</text>
+  <text x="980" y="388" class="b">권한 제공 동의 화면 요청</text>
+  <text x="980" y="446" class="lbl">KEYCLOAK</text>
+  <text x="980" y="470" class="b">지원</text>
+  <text x="980" y="506" class="lbl">POC</text>
+  <text x="980" y="530" class="b">사내 Client라 동의 불필요</text>
+  <text x="980" y="552" class="b">Realm JSON에 <tspan class="mono" style="font-size:13.5px">consentRequired</tspan></text>
+  <text x="980" y="574" class="b">없음 (기본값 false)</text>
+  <text x="980" y="604" class="s">→ 동의 화면이 나오지 않음</text>
+
+  <!-- select_account -->
+  <g filter="url(#sh)"><rect x="1260" y="280" width="280" height="360" rx="14" class="card"/></g>
+  <rect x="1260" y="280" width="280" height="8" rx="4" fill="#94a3b8"/>
+  <text x="1280" y="326" class="mono" style="font-size:19px;font-weight:800;fill:#475569">select_account</text>
+  <rect x="1280" y="340" width="96" height="26" rx="13" fill="#fee2e2"/>
+  <text x="1328" y="358" text-anchor="middle" style="font-size:13px;font-weight:800;fill:#b91c1c">미지원</text>
+  <text x="1280" y="392" class="lbl">의미</text>
+  <text x="1280" y="416" class="b">계정 선택 화면 요청</text>
+  <text x="1280" y="446" class="lbl">KEYCLOAK</text>
+  <text x="1280" y="470" class="b">지원 안 함 — 디스커버리의</text>
+  <text x="1280" y="490" class="s mono">prompt_values_supported</text>
+  <text x="1280" y="508" class="s mono">= [none, login, consent]</text>
+  <text x="1280" y="540" class="lbl">POC</text>
+  <text x="1280" y="564" class="b">사용 안 함</text>
+  <text x="1280" y="604" class="s">계정 전환은 "세션을 남기지</text>
+  <text x="1280" y="622" class="s">않는 것"으로 해결 (②·④)</text>
+
+  <!-- ===================== 2. 실제 인가 요청 ===================== -->
+  <circle cx="78" cy="702" r="18" fill="#1d4ed8"/><text x="78" y="708" text-anchor="middle" class="secn">2</text>
+  <text x="108" y="711" class="sec">실제 인가 요청 — Employee Auth Service가 만드는 주소</text>
+
+  <g filter="url(#sh)"><rect x="60" y="740" width="860" height="340" rx="14" fill="#0f172a"/></g>
+  <text x="84" y="772" class="s" style="fill:#94a3b8">KeycloakOidcClient.authorizationUrl() — 앱·백오피스 공통 (브라우저가 Gateway /iam 경유로 이동)</text>
+  <text x="84" y="808" class="mono code">GET {PUBLIC_BASE_URL}/iam/realms/pmart-employees</text>
+  <text x="84" y="830" class="mono code">      /protocol/openid-connect/auth</text>
+  <text x="96" y="860" class="mono code"><tspan fill="#93c5fd">?response_type</tspan>=code</text>
+  <text x="96" y="884" class="mono code"><tspan fill="#93c5fd">&amp;client_id</tspan>=pmart-employee-auth</text>
+  <text x="96" y="908" class="mono code"><tspan fill="#93c5fd">&amp;redirect_uri</tspan>={PUBLIC_BASE_URL}/employee-auth/callback</text>
+  <text x="96" y="932" class="mono code"><tspan fill="#93c5fd">&amp;scope</tspan>=openid profile</text>
+  <text x="96" y="956" class="mono code"><tspan fill="#93c5fd">&amp;state</tspan>=…            <tspan fill="#64748b">로그인 트랜잭션 (DB · 5분 · 1회용)</tspan></text>
+  <text x="96" y="980" class="mono code"><tspan fill="#93c5fd">&amp;nonce</tspan>=…            <tspan fill="#64748b">ID Token의 nonce와 비교</tspan></text>
+  <text x="96" y="1004" class="mono code"><tspan fill="#93c5fd">&amp;code_challenge</tspan>=…   <tspan fill="#64748b">BASE64URL(SHA256(code_verifier))</tspan></text>
+  <text x="96" y="1028" class="mono code"><tspan fill="#93c5fd">&amp;code_challenge_method</tspan>=S256</text>
+  <rect x="92" y="1042" width="360" height="26" rx="6" fill="#422006"/>
+  <text x="104" y="1060" class="mono" style="font-size:14px;fill:#fcd34d">(prompt 없음 · max_age 없음)</text>
+
+  <g filter="url(#sh)"><rect x="940" y="740" width="600" height="340" rx="14" class="card"/></g>
+  <text x="964" y="776" class="ct">붙여 넣은 예시와 다른 점</text>
+  <circle cx="974" cy="812" r="11" fill="#1d4ed8"/><text x="974" y="817" text-anchor="middle" style="font-size:13px;font-weight:800;fill:#fff">1</text>
+  <text x="994" y="812" class="bb">prompt를 보내지 않음</text>
+  <text x="994" y="834" class="b">예시의 <tspan class="mono" style="font-size:14px">prompt=login</tspan>은 지금 코드에 없음</text>
+  <circle cx="974" cy="872" r="11" fill="#1d4ed8"/><text x="974" y="877" text-anchor="middle" style="font-size:13px;font-weight:800;fill:#fff">2</text>
+  <text x="994" y="872" class="bb"><tspan class="mono" style="font-size:14px">scope=openid profile</tspan></text>
+  <text x="994" y="894" class="b">예시는 <tspan class="mono" style="font-size:14px">openid</tspan>만. 실제로는 profile도 요청</text>
+  <circle cx="974" cy="932" r="11" fill="#1d4ed8"/><text x="974" y="937" text-anchor="middle" style="font-size:13px;font-weight:800;fill:#fff">3</text>
+  <text x="994" y="932" class="bb"><tspan class="mono" style="font-size:14px">redirect_uri</tspan> 포함</text>
+  <text x="994" y="954" class="b">예시에 없음. Code 교환 때도 같은 값을 보냄</text>
+  <circle cx="974" cy="992" r="11" fill="#1d4ed8"/><text x="974" y="997" text-anchor="middle" style="font-size:13px;font-weight:800;fill:#fff">4</text>
+  <text x="994" y="992" class="bb">앱과 백오피스가 같은 요청</text>
+  <text x="994" y="1014" class="b">어느 쪽인지는 Keycloak이 아니라 서버 DB의</text>
+  <text x="994" y="1036" class="b">로그인 트랜잭션(<tspan class="mono" style="font-size:14px">client</tspan> 컬럼)으로 구분</text>
+
+  <!-- ===================== 3. 클라이언트별 결과 ===================== -->
+  <circle cx="78" cy="1142" r="18" fill="#1d4ed8"/><text x="78" y="1148" text-anchor="middle" class="secn">3</text>
+  <text x="108" y="1151" class="sec">prompt를 생략하면 — 클라이언트별로 일어나는 일</text>
+
+  <!-- 백오피스 -->
+  <g filter="url(#sh)"><rect x="60" y="1180" width="480" height="430" rx="14" class="card"/></g>
+  <rect x="60" y="1180" width="480" height="56" rx="14" fill="#e0f2fe"/><rect x="60" y="1220" width="480" height="16" fill="#e0f2fe"/>
+  <text x="84" y="1215" class="ct">인사팀 백오피스 <tspan class="s">PC 브라우저 · pmart-employee-auth</tspan></text>
+  <text x="84" y="1270" class="lbl">로그인</text>
+  <text x="84" y="1294" class="b">세션 없음 → Keycloak 로그인 화면</text>
+  <text x="84" y="1330" class="lbl">로그인 후</text>
+  <text x="84" y="1354" class="b">Keycloak SSO 세션을 <tspan class="bb">남겨 둠</tspan> (브라우저 쿠키)</text>
+  <text x="84" y="1376" class="b">PMart 토큰은 HttpOnly 쿠키 (D15)</text>
+  <text x="84" y="1412" class="lbl">효과</text>
+  <text x="84" y="1436" class="b">같은 브라우저로 웹메일을 열면</text>
+  <text x="84" y="1458" class="b">비밀번호 없이 로그인 = <tspan class="bb">의도한 SSO</tspan></text>
+  <text x="84" y="1494" class="lbl">로그아웃</text>
+  <text x="84" y="1518" class="b">SPA가 <tspan class="mono" style="font-size:14px">keycloakLogoutUrl</tspan>(end_session)로</text>
+  <text x="84" y="1540" class="b">이동해 Keycloak 세션까지 종료</text>
+  <rect x="84" y="1560" width="432" height="32" rx="8" fill="#dcfce7"/>
+  <text x="300" y="1581" text-anchor="middle" style="font-size:14px;font-weight:700;fill:#15803d">사일런트 로그인 = 편의 기능 (PC 개인 사용 전제)</text>
+
+  <!-- 앱 -->
+  <g filter="url(#sh)"><rect x="560" y="1180" width="480" height="430" rx="14" fill="#ffffff" stroke="#1d4ed8" stroke-width="2.2"/></g>
+  <rect x="560" y="1180" width="480" height="56" rx="14" fill="#dbeafe"/><rect x="560" y="1220" width="480" height="16" fill="#dbeafe"/>
+  <text x="584" y="1215" class="ct">Flutter 직원 앱 <tspan class="s">Custom Tab · pmart-employee-auth</tspan></text>
+  <text x="584" y="1270" class="lbl">로그인</text>
+  <text x="584" y="1294" class="b">세션 없음 → Keycloak 로그인 화면</text>
+  <text x="584" y="1330" class="lbl">CALLBACK 직후 (D20)</text>
+  <text x="584" y="1354" class="b">Code 교환 → 서버가 Keycloak logout 호출</text>
+  <text x="584" y="1376" class="b">→ 기기 브라우저의 세션 <tspan class="bb">0개</tspan> (실기기 확인)</text>
+  <text x="584" y="1412" class="lbl">로그인 유지</text>
+  <text x="584" y="1436" class="b">PMart Refresh Token (8시간 고정 · Rotation)</text>
+  <text x="584" y="1458" class="b">강제 종료 후 재실행 · 만료 후 갱신 모두 확인</text>
+  <text x="584" y="1494" class="lbl">다음 로그인</text>
+  <text x="584" y="1518" class="b">세션이 없으니 prompt 없이도 로그인 화면</text>
+  <text x="584" y="1540" class="b">아이디 칸이 비어 있어 다른 계정 가능</text>
+  <rect x="584" y="1560" width="432" height="32" rx="8" fill="#dbeafe"/>
+  <text x="800" y="1581" text-anchor="middle" style="font-size:14px;font-weight:700;fill:#1d4ed8">prompt=login 효과를 "세션 종료"로 얻음</text>
+
+  <!-- 웹메일 -->
+  <g filter="url(#sh)"><rect x="1060" y="1180" width="480" height="430" rx="14" class="card"/></g>
+  <rect x="1060" y="1180" width="480" height="56" rx="14" fill="#e0f2fe"/><rect x="1060" y="1220" width="480" height="16" fill="#e0f2fe"/>
+  <text x="1084" y="1215" class="ct">웹메일 Roundcube <tspan class="s">PC 브라우저 · pmart-webmail</tspan></text>
+  <text x="1084" y="1270" class="lbl">로그인</text>
+  <text x="1084" y="1294" class="b">별도 Client지만 같은 Realm의 SSO 세션 사용</text>
+  <text x="1084" y="1316" class="b">Roundcube 설정에 prompt 없음</text>
+  <text x="1084" y="1352" class="lbl">세션 있음</text>
+  <text x="1084" y="1376" class="b">백오피스에 로그인한 브라우저라면</text>
+  <text x="1084" y="1398" class="b">화면 없이 Code 발급 → 바로 메일함</text>
+  <text x="1084" y="1434" class="lbl">메일 서버</text>
+  <text x="1084" y="1458" class="b">받은 Keycloak 토큰으로 IMAP·SMTP OAuth</text>
+  <text x="1084" y="1480" class="b">Dovecot이 userinfo로 검증 (D22)</text>
+  <text x="1084" y="1516" class="lbl">로그아웃</text>
+  <text x="1084" y="1540" class="b">설정: <tspan class="mono" style="font-size:14px">oauth_logout_uri</tspan> = Keycloak logout</text>
+  <rect x="1084" y="1560" width="432" height="32" rx="8" fill="#dcfce7"/>
+  <text x="1300" y="1581" text-anchor="middle" style="font-size:14px;font-weight:700;fill:#15803d">LAN 메일 SSO가 이 동작에 기대고 있음</text>
+
+  <!-- ===================== 4. prompt=login을 뺀 이유 ===================== -->
+  <circle cx="78" cy="1672" r="18" fill="#1d4ed8"/><text x="78" y="1678" text-anchor="middle" class="secn">4</text>
+  <text x="108" y="1681" class="sec">앱에서 prompt=login을 뺀 이유 (D20 수정 이력)</text>
+
+  <g filter="url(#sh)"><rect x="60" y="1710" width="440" height="230" rx="14" class="card"/></g>
+  <text x="84" y="1746" class="lbl">처음 (10단계 구현)</text>
+  <text x="84" y="1776" class="bb">앱 로그인에 <tspan class="mono">prompt=login</tspan></text>
+  <text x="84" y="1804" class="b">앱 로그아웃 때 Keycloak 세션은 남겨 두고</text>
+  <text x="84" y="1826" class="b">매번 비밀번호를 다시 받는 방식</text>
+  <text x="84" y="1862" class="s">이유: Keycloak 로그아웃 Redirect에 커스텀 스킴을</text>
+  <text x="84" y="1882" class="s">등록하려면 Realm 변경이 필요 → 단순한 방법 선택</text>
+  <text x="84" y="1914" class="s">에뮬레이터에서 "Please re-authenticate" 확인</text>
+
+  <line x1="508" y1="1825" x2="552" y2="1825" class="flow" marker-end="url(#ar)"/>
+
+  <g filter="url(#sh)"><rect x="560" y="1710" width="460" height="230" rx="14" fill="#fff7ed" stroke="#fb923c" stroke-width="1.6"/></g>
+  <text x="584" y="1746" class="lbl" style="fill:#c2410c">문제 (사용자 보고)</text>
+  <text x="584" y="1776" class="bb">다른 계정으로 로그인할 수 없음</text>
+  <text x="584" y="1804" class="b">세션이 남아 있으면 Keycloak이</text>
+  <text x="584" y="1826" class="b">"Please re-authenticate" 화면에서</text>
+  <text x="584" y="1848" class="b"><tspan class="bb">아이디를 이전 계정으로 고정</tspan>, 비밀번호만 받음</text>
+  <text x="584" y="1884" class="s">prompt=login은 "같은 사람 재확인"이지</text>
+  <text x="584" y="1904" class="s">"새로 로그인"이 아님 → 공용 기기 계정 전환 불가</text>
+
+  <line x1="1028" y1="1825" x2="1072" y2="1825" class="flow" marker-end="url(#ar)"/>
+
+  <g filter="url(#sh)"><rect x="1080" y="1710" width="460" height="230" rx="14" fill="#f0fdf4" stroke="#22c55e" stroke-width="1.6"/></g>
+  <text x="1104" y="1746" class="lbl" style="fill:#15803d">지금 (D20 수정)</text>
+  <text x="1104" y="1776" class="bb"><tspan class="mono">prompt=login</tspan> 제거 + 세션 즉시 종료</text>
+  <text x="1104" y="1804" class="b">Code 교환 직후 Employee Auth가 Keycloak</text>
+  <text x="1104" y="1826" class="b">logout 엔드포인트를 서버 간 호출</text>
+  <text x="1104" y="1848" class="b">(Keycloak Refresh Token 사용, Gateway 경유 안 함)</text>
+  <text x="1104" y="1884" class="s">결과: 다음 로그인은 빈 아이디 칸</text>
+  <text x="1104" y="1904" class="s mono">KeycloakOidcClient.endKeycloakSession()</text>
+
+  <!-- ===================== 5. 남은 구멍 ===================== -->
+  <circle cx="78" cy="2002" r="18" fill="#b91c1c"/><text x="78" y="2008" text-anchor="middle" class="secn">5</text>
+  <text x="108" y="2011" class="sec" style="fill:#7f1d1d">남은 구멍 — 실패 경로에서는 prompt=none 없이도 사일런트 로그인 (미결정 #13)</text>
+
+  <g filter="url(#sh)"><rect x="60" y="2040" width="1480" height="190" rx="14" fill="#fef2f2" stroke="#fca5a5" stroke-width="1.6"/></g>
+  <!-- 흐름 4칸 -->
+  <rect x="84" y="2064" width="250" height="84" rx="10" fill="#ffffff" stroke="#fecaca"/>
+  <text x="100" y="2092" class="bb">로그인 트랜잭션 만료</text>
+  <text x="100" y="2116" class="s">우리: 5분 / Keycloak 로그인</text>
+  <text x="100" y="2134" class="s">제한 시간: 기본 30분</text>
+  <line x1="340" y1="2106" x2="372" y2="2106" stroke="#b91c1c" stroke-width="2.2" marker-end="url(#arR)"/>
+  <rect x="380" y="2064" width="270" height="84" rx="10" fill="#ffffff" stroke="#fecaca"/>
+  <text x="396" y="2092" class="bb">Callback <tspan class="mono" style="font-size:14px">invalid_state</tspan></text>
+  <text x="396" y="2116" class="s">Code 교환 전 실패 → 서버가</text>
+  <text x="396" y="2134" class="s">세션을 끊을 Keycloak 토큰이 없음</text>
+  <line x1="656" y1="2106" x2="688" y2="2106" stroke="#b91c1c" stroke-width="2.2" marker-end="url(#arR)"/>
+  <rect x="696" y="2064" width="250" height="84" rx="10" fill="#ffffff" stroke="#fecaca"/>
+  <text x="712" y="2092" class="bb">기기 브라우저에 세션 남음</text>
+  <text x="712" y="2116" class="s">D20의 "앱 로그인 뒤 세션 없음"</text>
+  <text x="712" y="2134" class="s">전제가 깨짐</text>
+  <line x1="952" y1="2106" x2="984" y2="2106" stroke="#b91c1c" stroke-width="2.2" marker-end="url(#arR)"/>
+  <rect x="992" y="2064" width="524" height="84" rx="10" fill="#b91c1c"/>
+  <text x="1008" y="2092" style="font-size:15px;font-weight:800;fill:#ffffff">다음 앱 로그인: prompt 생략 + 세션 있음</text>
+  <text x="1008" y="2116" style="font-size:14px;fill:#fee2e2">= ① 표의 "(생략)" 동작 → 화면 없이 Code 발급</text>
+  <text x="1008" y="2134" style="font-size:14px;fill:#fee2e2">비밀번호 없이 로그인 (실기기에서 재현)</text>
+
+  <text x="84" y="2180" class="bb" style="fill:#7f1d1d">조치 후보 (미결정, docs/issues/13-mobile-login-callback-failure.md)</text>
+  <text x="84" y="2206" class="b">ID Token <tspan class="mono" style="font-size:14px">auth_time</tspan>이 트랜잭션 생성보다 이전이면 세션 종료 후 재로그인 (디스커버리 <tspan class="mono" style="font-size:14px">claims_supported</tspan>에 <tspan class="mono" style="font-size:14px">auth_time</tspan> 있음) · Keycloak 제한 시간 &lt; 트랜잭션 수명 · 앱 전용 Callback 경로</text>
+
+  <!-- ===================== 6. 요약 ===================== -->
+  <g filter="url(#sh)"><rect x="60" y="2270" width="1480" height="250" rx="16" fill="url(#sum)"/></g>
+  <text x="90" y="2312" style="font-size:22px;font-weight:800;fill:#ffffff">정리 — 인가 요청 파라미터의 역할과 PoC 값</text>
+  <text x="90" y="2340" style="font-size:14.5px;fill:#bae6fd">state · nonce · PKCE는 "보안 검증", prompt는 "세션과 사용자 상호작용 방식". PoC는 앞의 셋을 모두 쓰고 prompt는 쓰지 않음</text>
+
+  <rect x="90" y="2362" width="342" height="134" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#7dd3fc" stroke-opacity="0.4"/>
+  <text x="110" y="2392" class="mono" style="font-size:18px;font-weight:800;fill:#7dd3fc">state</text>
+  <text x="110" y="2418" style="font-size:14px;fill:#e0f2fe">요청 ↔ Callback 연결 · CSRF 방지</text>
+  <text x="110" y="2446" style="font-size:13.5px;fill:#bae6fd">PoC: DB 로그인 트랜잭션</text>
+  <text x="110" y="2468" style="font-size:13.5px;fill:#bae6fd">5분 · 한 번 쓰면 삭제 (D13)</text>
+
+  <rect x="450" y="2362" width="342" height="134" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#7dd3fc" stroke-opacity="0.4"/>
+  <text x="470" y="2392" class="mono" style="font-size:18px;font-weight:800;fill:#7dd3fc">nonce</text>
+  <text x="470" y="2418" style="font-size:14px;fill:#e0f2fe">ID Token ↔ 이 요청 연결</text>
+  <text x="470" y="2446" style="font-size:13.5px;fill:#bae6fd">PoC: Code 교환 후 ID Token의</text>
+  <text x="470" y="2468" style="font-size:13.5px;fill:#bae6fd">nonce를 트랜잭션 값과 비교</text>
+
+  <rect x="810" y="2362" width="342" height="134" rx="10" fill="#ffffff" fill-opacity="0.08" stroke="#7dd3fc" stroke-opacity="0.4"/>
+  <text x="830" y="2392" class="mono" style="font-size:18px;font-weight:800;fill:#7dd3fc">code_challenge</text>
+  <text x="830" y="2418" style="font-size:14px;fill:#e0f2fe">PKCE로 Authorization Code 보호</text>
+  <text x="830" y="2446" style="font-size:13.5px;fill:#bae6fd">PoC: S256 · code_verifier는</text>
+  <text x="830" y="2468" style="font-size:13.5px;fill:#bae6fd">서버 DB에만 (브라우저에 없음)</text>
+
+  <rect x="1170" y="2362" width="342" height="134" rx="10" fill="#fcd34d" fill-opacity="0.14" stroke="#fcd34d" stroke-opacity="0.7"/>
+  <text x="1190" y="2392" class="mono" style="font-size:18px;font-weight:800;fill:#fcd34d">prompt</text>
+  <text x="1190" y="2418" style="font-size:14px;fill:#fef3c7">세션 처리 · 다시 물을지 지시</text>
+  <text x="1190" y="2446" style="font-size:13.5px;fill:#fde68a">PoC: 보내지 않음. 앱은 서버가</text>
+  <text x="1190" y="2468" style="font-size:13.5px;fill:#fde68a">세션 종료(D20) + Refresh Token</text>
+
+  <text x="60" y="2546" class="s">근거: KeycloakOidcClient.java · infra/keycloak/import/pmart-employees-realm.json · infra/roundcube/config · apps/hr-backoffice/src/api.js · /.well-known/openid-configuration · docs/verification-log.md</text>
+</svg>
