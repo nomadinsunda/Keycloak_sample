@@ -326,3 +326,38 @@ Keycloak 26.8.1은 토큰을 발급할 때마다 우리 Client 4개 모두에 �
 4. **`view-users`는 복합 역할**(`query-users` + `query-groups`)이라, 이전 설정에서는 Realm JSON에 없는 `query-groups`가 토큰에 실렸음
 5. **경고는 기동 때가 아니라 토큰 발급 때 남음**(`TokenEndpoint.full-scope-allowed` 로거). 기동 로그만 봐서는 놓칠 수 있음
 6. **Realm JSON의 Client Role Scope Mapping 형식**: 최상위 `"clientScopeMappings": {"realm-management": [{"client": "<clientId>", "roles": [...]}]}` (역할을 가진 Client가 키, 범위를 받는 Client가 `client`)
+
+## 2026-11-12 — 보안 결함: 계정 콘솔 이메일 변경으로 다른 직원 메일함 로그인 (조치 미정)
+
+등록된 OAuth Client를 조사하다가 Keycloak 기본 Client `account-console`(직원 본인용 계정 콘솔)이 Gateway `/iam/**` 라우트로 외부에서 접근 가능(200)한 것을 확인하고, 이메일 변경 가능 여부를 실제로 검증함. 관리 콘솔(`/iam/admin/**`)은 Gateway가 막아 401.
+
+### 재현 (전용 테스트 계정 `sec.attacker@pmart.test`로 실행 후 삭제)
+
+1. 테스트 계정으로 계정 콘솔 Client(`account-console`, public · PKCE)에 로그인 — Gateway 경유
+2. Account REST API `POST /iam/realms/pmart-employees/account/`로 내 이메일을 `hr.admin@pmart.test`로 변경 → **204**, Keycloak 저장값도 바뀜
+3. 웹메일 Client(`pmart-webmail`)로 테스트 계정 토큰 발급 → userinfo `email` = `hr.admin@pmart.test`
+4. 그 토큰으로 `hr.admin@pmart.test` 메일함 IMAP 로그인 → **OAUTHBEARER·XOAUTH2 모두 성공**
+
+### 원인 (세 가지가 겹침)
+
+| 설정 | 현재 값 | 영향 |
+|---|---|---|
+| Realm user profile `email` 편집 권한 | `admin`, `user` (Keycloak 기본) | 직원이 계정 콘솔에서 이메일을 바꿀 수 있음. D21의 "IAM 계정 ID = 이메일"이 깨짐 |
+| Realm `duplicateEmailsAllowed` | `true` | 다른 직원이 이미 쓰는 주소로도 바꿀 수 있음 |
+| Dovecot `username_attribute` | `email` | 바뀔 수 있는 값을 메일 계정 이름으로 사용. `username`(= IAM 계정 ID)은 `editUsernameAllowed: false`라 바뀌지 않음 |
+
+PMart 업무 API는 영향 없음: Employee Auth Service는 Keycloak `sub`(UUID)로 직원을 찾으므로 이메일을 바꿔도 다른 직원으로 로그인되지 않음. 영향 범위는 메일(IMAP 읽기, SMTP 발송 주소)로 보임. SMTP 사칭 발송은 아직 직접 확인하지 않음.
+
+조치 방법은 [open-questions.md](open-questions.md) 12번에서 결정.
+
+## 2026-11-12 — Realm Import 시점과 healthcheck (조사 기록)
+
+Realm JSON이 언제·어떻게 Keycloak에 전달되는지 Keycloak 26.8.1에서 직접 확인 (다이어그램: `docs/diagrams/keycloak-realm-import.svg`).
+
+- **읽는 위치는 고정**: `kc.sh start --help` — `--import-realm`은 `data/import` 디렉터리(`/opt/keycloak/data/import`)의 Realm 설정 파일을 읽음. 이 옵션에는 경로를 바꾸는 설정이 없어, Compose가 `./infra/keycloak/import`를 그 경로에 **읽기 전용 bind mount**로 연결함(`docker inspect` rw=false, 컨테이너 안 쓰기 시도 → `Read-only file system`)
+- **읽는 시점**: 서버를 시작할 때마다 부트스트랩 단계에서 한 번. 실행 중에는 파일을 감시하지 않음. Realm이 있으면 파일 전체를 건너뜀(`Realm 'pmart-employees' already exists. Import skipped`) — `docker compose restart keycloak`으로 확인
+- **별도 명령 `kc.sh import --dir/--file`은 기본값 `--override true`**(기존 데이터 덮어씀)로, 이 프로젝트가 쓰는 `start --import-realm`(IGNORE_EXISTING)과 반대 동작. 쓰지 않음
+
+### 알게 된 점: healthcheck가 Import 완료를 보장하지 않음
+
+첫 기동 로그 실측: Keycloak HTTP 포트 열림 01:59:30 → **Employee Auth 시작 01:59:50**(= Compose가 Keycloak을 healthy로 판단) → Keycloak Import 02:00:02~02:00:08 → `Bootstrap completed` 02:00:08. 즉 `/iam/health/ready`가 **부트스트랩(Import 포함)이 끝나기 전에 UP**을 돌려주고, `depends_on: condition: service_healthy`로 기다린 서비스도 Import 중에 시작됨. 그 사이 요청은 503 `Bootstrap in progress`. Employee Auth Service는 `HrTestAccountBootstrap`의 재시도(5초 간격 최대 30회)로 3번째 재시도에 성공해 문제가 드러나지 않았음. **부팅 시 Keycloak을 호출하는 코드는 503 재시도가 필수**이며, healthcheck만 믿으면 안 됨.
