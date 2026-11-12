@@ -19,6 +19,9 @@ import com.pmart.employeeservice.config.PmartProperties;
  * Keycloak Admin REST API 클라이언트.
  * Gateway를 경유하지 않고 내부 네트워크에서 Keycloak을 직접 호출합니다.
  * 인증은 pmart-employee-service Client의 Client Credentials 토큰을 사용합니다.
+ * 토큰의 주체는 이 Client의 Service Account(service-account-pmart-employee-service)이고,
+ * 이 클래스의 모든 작업(사용자 조회·생성, 비밀번호 설정, 비활성화, 세션 종료)은 realm-management의
+ * manage-users 하나로 동작합니다 (D23. 역할 매핑과 Client Role Scope Mapping 양쪽에 manage-users만).
  */
 @Component
 public class KeycloakAdminClient {
@@ -30,7 +33,11 @@ public class KeycloakAdminClient {
         this.kc = props.keycloak();
     }
 
-    /** username(사번)으로 사용자를 찾고, 없으면 만듭니다. 반환값은 Keycloak 사용자 ID(sub). */
+    /**
+     * username(IAM 계정 ID, 예: gildong.hong@pmart.test)으로 사용자를 찾고, 없으면 만듭니다.
+     * 반환값은 Keycloak 사용자 ID(sub). 사번은 인사 정보로만 쓰며 Keycloak에 넣지 않습니다 (D21).
+     * 이미 있으면 그 ID를 돌려주므로, 발급이 중간에 실패해 같은 사번으로 다시 요청해도 중복 생성되지 않습니다.
+     */
     public String ensureUser(String username, String firstName, String lastName, String email) {
         String token = serviceAccountToken();
         Optional<String> existing = findUserId(token, username);
