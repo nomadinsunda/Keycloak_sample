@@ -240,6 +240,60 @@ Keycloak을 사용하는 목적은 **직원 IAM 계정 발급**이다. 이전 �
 
 ### 남은 단계
 
-- 없음 (0~11단계 완료)
-- 자동화 테스트(JUnit, Testcontainers) 추가. Initializr가 만든 기본 테스트(`contextLoads`)는 DB 없이 실패하므로 삭제한 상태
+- 없음 (0~11단계 완료). 자동화 테스트는 아래 항목에서 추가
 - 운영 수준 항목(App Link, 키 관리, 메일 프로비저닝 정식화)은 [open-questions.md](open-questions.md) 참고
+
+## 2026-11-12 — 자동화 테스트 (JUnit 5 · Testcontainers)
+
+### 사용 버전
+
+| 구성 요소 | 버전 |
+|---|---|
+| Testcontainers | 2.0.5 (Spring Boot 4.1.2 BOM이 관리. 직접 버전을 적지 않음) |
+| 테스트 DB 이미지 | `postgres:18.6-alpine` (compose.yaml과 같음) |
+
+### 결과 요약
+
+- 서비스별 `./gradlew test`: **총 96개 통과**, 연속 2회 (`--rerun-tasks`). Docker Desktop이 실행 중이어야 함
+- Dockerfile은 `bootJar -x test`이므로 이미지 빌드에는 영향 없음(빌드 확인함)
+
+| 서비스 | 테스트 | 개수 | 확인 내용 |
+|---|---|---|---|
+| employee-auth | `@JdbcTest` 슬라이스 + Testcontainers PostgreSQL + Flyway | 33 | JWT 헤더(RS256·`kid`)·클레임(정해진 10개만, 개인정보 없음)·15분, 서명키 DB 저장·재시작 후 같은 키, JWKS에 개인키 없음, 쿠키 속성, Refresh Token 해시 저장·8시간 고정·Rotation·재사용 탐지 시 세션 전체 폐기·퇴사 시 전부 폐기, 로그인 트랜잭션 단일 사용·만료, 앱 ticket의 `app_verifier` 결속·단일 사용·실패 시 폐기·만료, PKCE S256(RFC 7636 예시 값) |
+| sample-api | `@SpringBootTest` + MockMvc, 운영 `JwtDecoder` 그대로 | 15 | 고객·라이더 토큰(테스트용 키로 서명) 거부, 고객 키로 위조한 직원 토큰 거부, **토큰의 `iss`를 따라 다른 발급자 JWKS를 조회하지 않음**(요청 0회 확인), 허용되지 않은 `iss`·`aud`·`user_type`·만료·`alg: none`·서명 변조 거부, HR_ADMIN 권한 |
+| gateway | `@SpringBootTest(RANDOM_PORT)` 실제 Netty + 하위 서비스 대역 HTTP 서버 | 22 | 쿠키 JWT → `Authorization: Bearer` 전달, `/iam`에는 JWT를 보내지 않음, CSRF(쿠키 POST·PUT·PATCH·DELETE·logout·refresh 검사, Bearer·`/employee-auth/mobile/**`·`/iam/**` 제외, 쿠키·헤더 불일치 403), CORS(백오피스 Origin만, `allowCredentials`, preflight 인증 없이 통과), `/iam/admin/**` 차단 |
+| employee-service | `@SpringBootTest` + MockMvc + Testcontainers, Keycloak·Employee Auth 호출은 `@MockitoBean` | 26 | HR_ADMIN 권한, 한국어 검증 메시지(`ProblemDetail.detail`), IAM 계정 ID = 계정명@도메인 = Keycloak username·이메일, 초기 비밀번호 `temporary=true`, 중복 409, Keycloak 장애 시 FAILED 후 같은 사번으로 재시도, 퇴사 처리 3단계, 내부 API 키, 메일함 파일 형식·멱등, **새 환경 메일함 문제 회귀 테스트** |
+
+### 테스트가 실제로 결함을 잡는지 확인 (변이 테스트)
+
+코드를 일부러 망가뜨려 테스트가 실패하는지 확인하고 되돌림.
+
+| 망가뜨린 곳 | 결과 |
+|---|---|
+| Refresh Token 재사용 탐지 시 family 폐기를 뺌 | 1개 실패 (세션 전체 폐기 테스트) |
+| sample-api `aud`·`user_type` 검사를 항상 통과로 | 2개 실패 |
+| Gateway CSRF 검사 대상을 항상 "아님"으로 + `/iam` 쿠키 전달 예외 제거 | 5개 실패 |
+| 내부 upsert의 메일함 생성 제거(오늘 고친 부분) | 1개 실패 (회귀 테스트) |
+
+### 설계에 없던 것을 구현하며 정한 것
+
+| 항목 | 정한 내용 | 이유 |
+|---|---|---|
+| employee-auth 테스트 범위 | 전체 컨텍스트 대신 `@JdbcTest` 슬라이스 | 전체 컨텍스트를 띄우면 `HrTestAccountBootstrap`이 Keycloak을 호출하며 최대 150초 재시도함. DB·토큰 계층만 올리고 Flyway로 운영과 같은 스키마 사용 |
+| 고객·라이더 토큰 | 테스트 안에서 RSA 키를 만들고 JDK 내장 HTTP 서버로 JWKS 제공 (`TestIssuer`) | CLAUDE.md: Customer/Rider Auth는 구현하지 않고 테스트용 키로 서명한 토큰 사용. 별도 Mock 서버 라이브러리를 추가하지 않음 |
+| 공통 테스트 코드 | `TestIssuer`를 sample-api와 gateway에 복사 | 서비스마다 독립된 Gradle 프로젝트라 공유 모듈을 만들면 구조가 커짐 |
+| employee-service의 JWT | spring-security-test `jwt()` 사용 | 권한·업무 규칙에 집중. 서명·`aud`·`user_type` 검증 코드는 sample-api와 같은 방식이고 그쪽에서 확인 |
+
+### 알게 된 점
+
+1. **Gateway의 보조 Origin 검사 필터는 실제로는 동작할 일이 없음**: 허용되지 않은 Origin의 요청은 CSRF 토큰이 맞아도 403이 되는데, 막는 것은 CORS 처리기임(Spring은 preflight가 아닌 실제 요청도 Origin이 허용 목록에 없으면 403으로 거부). 업무 경로가 모두 CORS 설정에 등록되어 있어 `SecurityConfig.originCheckFilter`까지 가지 않음. CSRF 검사를 꺼도 Origin 테스트가 통과하는 것으로 확인. 동작 결과는 맞으므로 코드는 그대로 두고 테스트 이름·주석을 실제 동작에 맞춤
+2. **Spring Boot는 리스트 프로퍼티를 프로퍼티 소스끼리 합치지 않음**: 테스트에서 `routes[0].uri`만 덮어쓰면 `id`·`predicates`가 사라짐. 라우트 전체를 다시 정의해야 함
+3. **Testcontainers 2.x 변경**: 모듈 이름이 `org.testcontainers:testcontainers-postgresql`처럼 바뀌었고, `PostgreSQLContainer`는 `org.testcontainers.postgresql` 패키지를 씀(이전 `org.testcontainers.containers`는 남아 있지만 예전 방식). Spring Boot 4의 `@JdbcTest`·`@AutoConfigureMockMvc`도 패키지가 `org.springframework.boot.jdbc.test.autoconfigure`·`org.springframework.boot.webmvc.test.autoconfigure`로 바뀜
+4. **`@JdbcTest` 트랜잭션 안의 `now()`**: PostgreSQL `now()`는 트랜잭션 시작 시각으로 고정됨. 만료 테스트는 시간을 기다리지 않고 음수 TTL이나 `UPDATE ... expires_at = now() - interval`로 만듦
+5. **Windows의 `python` 명령**: Microsoft Store 연결용 가짜 실행 파일이라 아무것도 실행하지 않고 끝남. 스크립트에서 파일을 고칠 때 쓰지 말 것
+
+### 남은 확인
+
+- Flutter 앱(`apps/employee_mobile`)과 백오피스(`apps/hr-backoffice`)의 자동화 테스트는 없음. 수동 확인과 `scripts/e2e-test.sh`로 검증
+- 로그인 Callback(`AuthController`의 `state`·`nonce`·ID Token 검증)은 Keycloak이 필요해 단위 테스트 없이 e2e 테스트로만 확인
+
