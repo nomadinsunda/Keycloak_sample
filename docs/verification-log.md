@@ -358,6 +358,41 @@ Realm JSON이 언제·어떻게 Keycloak에 전달되는지 Keycloak 26.8.1에�
 - **읽는 시점**: 서버를 시작할 때마다 부트스트랩 단계에서 한 번. 실행 중에는 파일을 감시하지 않음. Realm이 있으면 파일 전체를 건너뜀(`Realm 'pmart-employees' already exists. Import skipped`) — `docker compose restart keycloak`으로 확인
 - **별도 명령 `kc.sh import --dir/--file`은 기본값 `--override true`**(기존 데이터 덮어씀)로, 이 프로젝트가 쓰는 `start --import-realm`(IGNORE_EXISTING)과 반대 동작. 쓰지 않음
 
-### 알게 된 점: healthcheck가 Import 완료를 보장하지 않음
+### 알게 된 점: 이 프로젝트의 Keycloak healthcheck가 잘못되어 Import 중에 의존 서비스가 시작됨
 
-첫 기동 로그 실측: Keycloak HTTP 포트 열림 01:59:30 → **Employee Auth 시작 01:59:50**(= Compose가 Keycloak을 healthy로 판단) → Keycloak Import 02:00:02~02:00:08 → `Bootstrap completed` 02:00:08. 즉 `/iam/health/ready`가 **부트스트랩(Import 포함)이 끝나기 전에 UP**을 돌려주고, `depends_on: condition: service_healthy`로 기다린 서비스도 Import 중에 시작됨. 그 사이 요청은 503 `Bootstrap in progress`. Employee Auth Service는 `HrTestAccountBootstrap`의 재시도(5초 간격 최대 30회)로 3번째 재시도에 성공해 문제가 드러나지 않았음. **부팅 시 Keycloak을 호출하는 코드는 503 재시도가 필수**이며, healthcheck만 믿으면 안 됨.
+> 정정 (같은 날): 처음에는 "Keycloak의 `/health/ready`가 Import가 끝나기 전에 UP을 돌려준다"고 기록했으나 **틀렸음**. 시각만 보고 health 응답 본문을 확인하지 않은 판단이었음.
+
+첫 기동 로그 실측: HTTP 포트 열림 01:59:30 → DB 스키마 생성(Liquibase) 01:59:32~ → **Employee Auth 시작 01:59:50** → Import 02:00:02~02:00:08 → `Bootstrap completed` 02:00:08.
+
+그 사이 Keycloak은 health를 계속 **DOWN**으로 보고함(01:59:30·40·51, 02:00:01 로그):
+`{"status":"DOWN","checks":[{"name":"Graceful Shutdown","status":"UP"},{"name":"Keycloak Initialized","status":"DOWN"}]}`
+
+원인은 compose.yaml의 Keycloak healthcheck 명령 `grep -q '"UP"'`: 전체 `status`가 아니라 **하위 항목(`Graceful Shutdown`)의 `"UP"` 문자열에 반응**해, Keycloak이 DOWN인데도 healthy로 판단함. 그래서 `depends_on: condition: service_healthy`로 기다린 서비스가 Import 중에 시작되고, 그 요청은 503 `Bootstrap in progress`를 받음. Employee Auth Service는 `HrTestAccountBootstrap`의 재시도(5초 간격 최대 30회)로 3번째 재시도에 성공해 문제가 드러나지 않았음.
+
+- Keycloak의 readiness 동작은 정상 (부트스트랩·Import가 끝나야 전체 UP)
+- 부팅 시 Keycloak을 호출하는 코드의 503 재시도는 healthcheck를 고친 뒤에도 방어용으로 유지
+
+### 수정: healthcheck를 HTTP 상태 줄 200 검사로 변경
+
+- 확인: Keycloak 재시작 중 다른 컨테이너에서 1초마다 `/iam/health/ready` 상태 코드 조회 → 200 → 503(종료 중) → 000(연결 없음) → **503(부트스트랩 중)** → `Bootstrap completed` 직후 **200**. 상태 코드가 전체 상태를 정확히 나타냄
+- 변경(compose.yaml): 응답 본문에서 `"UP"` 찾기 → 응답 첫 줄(상태 줄)에 ` 200 `이 있는지 검사(`head -n 1 <&3 | grep -q ' 200 '`). 이미지에 curl이 없어 bash `/dev/tcp` 방식은 유지
+- 새 환경(`down -v` → `up`) 결과: Import 03:31:42~46 → `Bootstrap completed` 03:31:47 → Employee Service 03:31:57 · Employee Auth 03:32:07 · Gateway 03:32:24 시작. **부트스트랩 중 요청(503) 0건**, Employee Auth 재시도 로그 없음. e2e **85개 통과**
+
+## 2026-11-12 — 실기기 재검증 (Galaxy Z Flip SM-F700N · Android 13)
+
+healthcheck 수정 후 새 환경(`down -v` → `up`)에서 인사팀 등록부터 앱 로그아웃까지 실기기로 다시 확인. 앱은 `flutter run`(debug)으로 설치하고 `adb reverse tcp:8080 tcp:8080`으로 기기의 `localhost:8080`을 PC의 Gateway에 연결.
+
+| 단계 | 결과 | 서버 쪽 확인 |
+|---|---|---|
+| 인사팀 로그인 (백오피스 `http://localhost:3000`, PC 브라우저) | 통과 | `직원 로그인 성공: HR000001 roles=[EMPLOYEE, HR_ADMIN]` |
+| 신규 직원 등록 (`EMP00004`, 계정명 `jungnam.kim`) | 통과 | Keycloak: username = email = `jungnam.kim@pmart.test`, `requiredActions=[UPDATE_PASSWORD]` / 직원 DB: ACTIVE · EMPLOYEE · COMPLETED · Keycloak UUID 연결 / 메일 서버: 메일함 생성 |
+| 앱 첫 로그인 (Custom Tab → 임시 비밀번호 변경 → 커스텀 스킴으로 앱 복귀) | 통과 | `requiredActions` 해제, ticket 교환 후 남은 ticket 0건, **Keycloak 세션 0개**(로그인 직후 종료, D20), Refresh Token 1개(로그인 + 8시간) |
+| 토큰 갱신 (Rotation) | 통과 | 이전 토큰 `used_at` 기록, 같은 family로 새 토큰 발급, **만료 시각 그대로**(연장 없음, D19) |
+| 로그아웃 | 통과 | 같은 family 토큰 2개 동시 `revoked_at` 기록 |
+| 모든 직원 API · HR_ADMIN 전용 API | 화면으로만 확인 | Gateway·샘플 API는 성공·403 요청을 로그로 남기지 않아 서버 쪽 기록 없음 |
+
+### 알게 된 점
+
+1. **백오피스는 `localhost:3000`으로만 로그인 가능**: `.env`의 `BACKOFFICE_ORIGIN`·`PUBLIC_BASE_URL`이 `localhost`라, 다른 기기에서 PC의 LAN IP로 접속하면 CORS 허용 Origin·Keycloak Redirect URI와 맞지 않음
+2. **`flutter run`의 `Lost connection to device`는 디버그 연결만 끊긴 것**: 앱 프로세스·`adb reverse`는 유지되어 테스트를 계속할 수 있음 (Galaxy Z Flip을 접거나 Custom Tab으로 전환할 때 발생)
+3. **API 호출 결과는 서버 로그로 확인할 수 없음**: 실기기 테스트를 서버 쪽에서 검증하려면 Gateway 접근 로그가 필요 (현재 없음)

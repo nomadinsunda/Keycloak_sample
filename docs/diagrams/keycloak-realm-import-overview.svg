@@ -48,10 +48,11 @@
   <circle cx="1480" cy="40" r="120" fill="#ffffff" opacity="0.04"/>
   <circle cx="1390" cy="170" r="70" fill="#ffffff" opacity="0.05"/>
   <text x="60" y="88" class="h1">Keycloak Realm Import</text>
-  <text x="60" y="130" class="sub">Git의 JSON 파일을 Keycloak 시작 시 읽어, Realm이 없을 때만 그대로 만드는 초기 설치 기능</text>
+  <text x="60" y="122" class="sub">Keycloak이 <tspan class="mono">--import-realm</tspan>으로 시작할 때 Realm JSON 파일을 읽어, Realm이 없을 때만 그대로 만드는 기능</text>
+  <text x="60" y="150" style="font-size:16px;fill:#ddd6fe">읽는 위치: Keycloak이 실행되는 환경(컨테이너 또는 호스트)의 파일시스템에서 Keycloak 설치 디렉터리 아래 <tspan class="mono">data/import</tspan> (예: <tspan class="mono">/opt/keycloak/data/import</tspan>)</text>
   <rect x="1212" y="52" width="328" height="38" rx="19" fill="#ffffff" fill-opacity="0.13" stroke="#c4b5fd" stroke-opacity="0.5"/>
   <text x="1376" y="77" text-anchor="middle" style="font-size:15px;font-weight:700;fill:#ede9fe">Keycloak 26.8.1 · PMart 직원 IAM PoC</text>
-  <text x="60" y="166" style="font-size:14px;fill:#c4b5fd">이 프로젝트: start --import-realm · Realm pmart-employees · PostgreSQL keycloak DB</text>
+  <text x="60" y="176" style="font-size:14px;fill:#c4b5fd">이 프로젝트: Keycloak 컨테이너의 <tspan class="mono">/opt/keycloak/data/import</tspan> ← 호스트(Windows)의 <tspan class="mono">infra/keycloak/import</tspan>를 읽기 전용 볼륨으로 연결 · Realm pmart-employees</text>
 
   <!-- ===================== 1. 정의 ===================== -->
   <circle cx="78" cy="242" r="18" fill="#6d28d9"/><text x="78" y="248" text-anchor="middle" class="secn">1</text>
@@ -66,7 +67,7 @@
   <text x="92" y="322" class="lbl">REALM</text>
   <text x="92" y="354" class="ct">Keycloak 안의 독립된 설정 단위</text>
   <text x="92" y="386" class="b">사용자 · OAuth Client · 역할 · 로그인 정책을 하나로 묶음</text>
-  <text x="92" y="412" class="b">Realm끼리는 서로 보이지 않음</text>
+  <text x="92" y="412" class="b">사용자 · Client는 Realm마다 따로 있음 (서로 공유하지 않음)</text>
   <text x="92" y="436" class="s">이 프로젝트: <tspan class="mono code">pmart-employees</tspan> (관리자용 <tspan class="mono code">master</tspan>는 기본으로 있음)</text>
 
   <text x="832" y="322" class="lbl">REALM IMPORT</text>
@@ -93,7 +94,7 @@
   <text x="104" y="714" class="s">Realm 전체 설정 · Git으로 관리</text>
   <circle cx="112" cy="774" r="15" fill="#d97706"/><text x="112" y="779" text-anchor="middle" class="tag">④</text>
   <text x="138" y="780" class="ct" style="font-size:18px">비밀 값</text>
-  <text x="104" y="812" class="b"><tspan class="mono code">.env</tspan> (Git 제외) · Client Secret 4개 · URL</text>
+  <text x="104" y="812" class="b"><tspan class="mono code">.env</tspan> (Git 제외) · Client Secret · URL · 메일 비밀번호</text>
   <text x="104" y="838" class="s">JSON에는 <tspan class="mono code">${환경변수}</tspan> 자리만 둠</text>
 
   <!-- Docker Compose -->
@@ -121,7 +122,7 @@
     <rect x="914" y="776" width="382" height="84" rx="12" class="card"/>
   </g>
   <circle cx="942" cy="634" r="15" fill="#6d28d9"/><text x="942" y="639" text-anchor="middle" class="tag">②</text>
-  <text x="968" y="626" class="ct" style="font-size:17px">읽는 위치 (고정)</text>
+  <text x="968" y="626" class="ct" style="font-size:17px">읽는 위치 <tspan class="s" style="font-weight:400">설치 경로 아래 data/import</tspan></text>
   <text x="968" y="652" class="mono code">/opt/keycloak/data/import</text>
   <circle cx="942" cy="724" r="15" fill="#6d28d9"/><text x="942" y="729" text-anchor="middle" class="tag">⑤</text>
   <text x="968" y="716" class="ct" style="font-size:17px">실행 옵션</text>
@@ -167,7 +168,7 @@
   <text x="284" y="1030" class="s">③ 볼륨 연결 · ④ 환경변수 주입 · 컨테이너 시작</text>
   <rect x="200" y="1066" width="64" height="62" rx="12" fill="#6d28d9"/><text x="232" y="1104" text-anchor="middle" class="tag" style="font-size:18px">2</text>
   <text x="284" y="1092" class="b" style="font-weight:700">Keycloak 시작 <tspan class="mono code">start --import-realm</tspan></text>
-  <text x="284" y="1116" class="s">HTTP 포트가 열리고 부트스트랩 단계에 들어감</text>
+  <text x="284" y="1116" class="s">HTTP 포트가 열리고 부트스트랩 시작 — 끝날 때까지 health = DOWN</text>
   <rect x="200" y="1152" width="64" height="62" rx="12" fill="#6d28d9"/><text x="232" y="1190" text-anchor="middle" class="tag" style="font-size:18px">3</text>
   <text x="284" y="1178" class="b" style="font-weight:700">② 폴더의 JSON 파일 읽기</text>
   <text x="284" y="1202" class="mono log">"Importing from directory /opt/keycloak/…/data/import"</text>
@@ -219,33 +220,39 @@
   </g>
   <rect x="980" y="980" width="560" height="58" rx="16" fill="#fef3c7"/>
   <rect x="980" y="1020" width="560" height="18" fill="#fef3c7"/>
-  <text x="1006" y="1016" style="font-size:18px;font-weight:800;fill:#92400e">실측 타임라인 — 첫 기동 (2026-11-12)</text>
+  <text x="1006" y="1016" style="font-size:18px;font-weight:800;fill:#92400e">실측 타임라인 — healthcheck 수정 전 첫 기동</text>
 
-  <path d="M1040,1070 V1500" stroke="#e2e8f0" stroke-width="4"/>
-  <circle cx="1040" cy="1088" r="10" fill="#6d28d9"/>
-  <text x="1066" y="1084" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:30</text>
-  <text x="1066" y="1108" class="b">Keycloak HTTP 포트 열림 (단계 2)</text>
-  <circle cx="1040" cy="1178" r="10" fill="#d97706"/>
-  <text x="1066" y="1174" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:50</text>
-  <text x="1066" y="1198" class="b">Compose가 healthy로 판단 → Employee Auth 시작</text>
-  <text x="1066" y="1220" class="s">/iam/health/ready가 이미 UP</text>
-  <circle cx="1040" cy="1290" r="10" fill="#dc2626"/>
-  <text x="1066" y="1286" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:58</text>
-  <text x="1066" y="1310" class="b">Employee Auth의 Keycloak 호출 → 503</text>
-  <text x="1066" y="1332" class="mono log">"Bootstrap in progress" → 5초 뒤 재시도</text>
-  <circle cx="1040" cy="1402" r="10" fill="#6d28d9"/>
-  <text x="1066" y="1398" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">02:00:02</text>
-  <text x="1066" y="1422" class="b">Import 시작 (단계 3~6)</text>
-  <circle cx="1040" cy="1492" r="10" fill="#0f766e"/>
-  <text x="1066" y="1488" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">02:00:08</text>
-  <text x="1066" y="1512" class="b">Realm imported · Bootstrap completed (단계 7)</text>
-  <text x="1066" y="1534" class="s">Employee Auth는 3번째 재시도에서 성공</text>
+  <path d="M1040,1066 V1500" stroke="#e2e8f0" stroke-width="4"/>
+  <circle cx="1040" cy="1076" r="10" fill="#6d28d9"/>
+  <text x="1066" y="1072" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:30</text>
+  <text x="1066" y="1096" class="b">Keycloak HTTP 포트 열림 (단계 2)</text>
+  <text x="1066" y="1117" class="s">/health/ready = DOWN (Keycloak Initialized: DOWN)</text>
+  <circle cx="1040" cy="1156" r="10" fill="#94a3b8"/>
+  <text x="1066" y="1152" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:32</text>
+  <text x="1066" y="1176" class="b">DB 스키마 생성 (Liquibase) — 첫 기동이라 오래 걸림</text>
+  <circle cx="1040" cy="1236" r="10" fill="#d97706"/>
+  <text x="1066" y="1232" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:50</text>
+  <text x="1066" y="1256" class="b">Compose healthcheck 통과 → Employee Auth 시작</text>
+  <text x="1066" y="1277" class="s" style="fill:#b91c1c">Keycloak은 아직 DOWN인데 통과 — 아래 원인 참고</text>
+  <circle cx="1040" cy="1316" r="10" fill="#dc2626"/>
+  <text x="1066" y="1312" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">01:59:58</text>
+  <text x="1066" y="1336" class="b">Employee Auth의 Keycloak 호출 → 503</text>
+  <text x="1066" y="1357" class="mono log">"Bootstrap in progress" → 5초 뒤 재시도</text>
+  <circle cx="1040" cy="1396" r="10" fill="#6d28d9"/>
+  <text x="1066" y="1392" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">02:00:02</text>
+  <text x="1066" y="1416" class="b">Import 시작 (단계 3~6)</text>
+  <circle cx="1040" cy="1476" r="10" fill="#0f766e"/>
+  <text x="1066" y="1472" class="mono" style="font-size:15px;font-weight:700;fill:#1e1b4b">02:00:08</text>
+  <text x="1066" y="1496" class="b">Realm imported · Bootstrap completed (단계 7)</text>
+  <text x="1066" y="1517" class="s">이후 health = UP · Employee Auth는 3번째 재시도에서 성공</text>
 
-  <rect x="1004" y="1580" width="512" height="126" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
-  <text x="1028" y="1614" style="font-size:16px;font-weight:800;fill:#991b1b">healthcheck 통과 ≠ Import 완료</text>
-  <text x="1028" y="1642" class="b">depends_on: service_healthy로 기다려도</text>
-  <text x="1028" y="1666" class="b">Import 중에 서비스가 시작될 수 있음</text>
-  <text x="1028" y="1690" class="b">→ 부팅 시 Keycloak 호출은 <tspan style="font-weight:800;fill:#991b1b">503 재시도 필수</tspan></text>
+  <rect x="1004" y="1556" width="512" height="152" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="1028" y="1588" style="font-size:16px;font-weight:800;fill:#991b1b">원인: 이 프로젝트의 healthcheck 명령 <tspan style="fill:#047857">→ 수정함</tspan></text>
+  <text x="1028" y="1614" class="mono log" style="font-size:11.5px">{"status":"DOWN","checks":[{"name":"Graceful</text>
+  <text x="1028" y="1630" class="mono log" style="font-size:11.5px"> Shutdown","status":"UP"},{"name":"Keycloak</text>
+  <text x="1028" y="1646" class="mono log" style="font-size:11.5px"> Initialized","status":"DOWN"}]}</text>
+  <text x="1028" y="1672" class="b"><tspan class="mono code">grep '"UP"'</tspan>이 하위 항목의 UP을 찾아 통과시킴</text>
+  <text x="1028" y="1694" class="b" style="fill:#047857">→ 상태 줄 200 검사로 수정: Import 후에 서비스 시작, 503 0건</text>
 
   <!-- ===================== 4. Import 대상 ===================== -->
   <circle cx="78" cy="1802" r="18" fill="#6d28d9"/><text x="78" y="1808" text-anchor="middle" class="secn">4</text>
@@ -258,7 +265,7 @@
   <rect x="60" y="1840" width="730" height="54" rx="16" fill="#ede9fe"/><rect x="60" y="1876" width="730" height="18" fill="#ede9fe"/>
   <text x="88" y="1875" style="font-size:18px;font-weight:800;fill:#4c1d95">Import로 생성 — Realm JSON에 정의</text>
   <rect x="810" y="1840" width="730" height="54" rx="16" fill="#f1f5f9"/><rect x="810" y="1876" width="730" height="18" fill="#f1f5f9"/>
-  <text x="838" y="1875" style="font-size:18px;font-weight:800;fill:#334155">Import로 만들지 않음 — 다른 주체가 생성</text>
+  <text x="838" y="1875" style="font-size:18px;font-weight:800;fill:#334155">Realm JSON에 정의하지 않은 것</text>
 
   <g>
     <text x="88" y="1930" class="b" style="font-weight:800">Realm 설정</text>
@@ -276,12 +283,13 @@
   </g>
   <g>
     <text x="838" y="1930" class="b" style="font-weight:800">Keycloak 기본 Client 6개</text>
-    <text x="1080" y="1930" class="b">Realm 생성 시 Keycloak이 자동 생성</text>
-    <line x1="838" y1="1950" x2="1512" y2="1950" stroke="#f1f5f9" stroke-width="2"/>
-    <text x="838" y="1990" class="b" style="font-weight:800">테스트용 인사팀 계정</text>
-    <text x="1080" y="1990" class="b">Employee Auth Service 부팅 시</text>
-    <text x="1080" y="2012" class="s">Client Credentials → Admin REST API</text>
-    <line x1="838" y1="2034" x2="1512" y2="2034" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="1080" y="1930" class="b">Import로 Realm을 만들 때 Keycloak이</text>
+    <text x="1080" y="1950" class="s" style="font-size:13px">기본으로 자동 추가 (account · admin-cli 등)</text>
+    <line x1="838" y1="1964" x2="1512" y2="1964" stroke="#f1f5f9" stroke-width="2"/>
+    <text x="838" y="1996" class="b" style="font-weight:800">테스트용 인사팀 계정</text>
+    <text x="1080" y="1996" class="b">Employee Auth Service 부팅 시</text>
+    <text x="1080" y="2018" class="s">Client Credentials → Admin REST API</text>
+    <line x1="838" y1="2040" x2="1512" y2="2040" stroke="#f1f5f9" stroke-width="2"/>
     <text x="838" y="2074" class="b" style="font-weight:800">직원 계정</text>
     <text x="1080" y="2074" class="b">직원 등록 시 Employee Service가</text>
     <text x="1080" y="2096" class="s">Client Credentials → Admin REST API</text>
@@ -308,12 +316,13 @@
   <text x="459" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">② 시작할 때만 읽음</text>
   <text x="459" y="2312" class="b">실행 중에는 파일 변경을</text>
   <text x="459" y="2336" class="b">감시하지 않음</text>
-  <text x="834" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">③ 파일 단위로 판단</text>
-  <text x="834" y="2312" class="b">Realm이 있으면 바뀐 부분만</text>
-  <text x="834" y="2336" class="b">합치지 않고 전체를 건너뜀</text>
-  <text x="1209" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">④ healthcheck ≠ 완료</text>
-  <text x="1209" y="2312" class="b">Import 중 시작된 서비스는 503</text>
-  <text x="1209" y="2336" class="b">→ 재시도 필요 (실측 확인)</text>
+  <text x="834" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">③ Realm 단위로 판단</text>
+  <text x="834" y="2312" class="b">같은 이름의 Realm이 있으면 바뀐</text>
+  <text x="834" y="2336" class="b">부분만 합치지 않고 전체를 건너뜀</text>
+  <text x="1209" y="2282" style="font-size:17px;font-weight:800;fill:#991b1b">④ 끝날 때까지 요청 거부</text>
+  <text x="1209" y="2312" class="b">부트스트랩(Import 포함) 중에는</text>
+  <text x="1209" y="2336" class="b">health = DOWN, 요청은 503</text>
+  <text x="1209" y="2358" class="mono s">Bootstrap in progress</text>
 
   <!-- 설정 변경 방법 -->
   <text x="60" y="2418" style="font-size:17px;font-weight:800;fill:#1e1b4b">그래서 설정을 바꿀 때는</text>
@@ -331,5 +340,5 @@
   <!-- ===================== 6. 요약 ===================== -->
   <rect x="0" y="2510" width="1600" height="50" fill="url(#sum)"/>
   <text x="60" y="2541" style="font-size:16px;font-weight:800;fill:#c4b5fd">한 줄 요약</text>
-  <text x="170" y="2541" style="font-size:16px;fill:#ffffff">Git의 JSON을 시작 시 고정 경로에서 읽어 Realm이 없을 때만 만드는 초기 설치 기능 — 생성 이후의 설정 변경은 처리하지 않음</text>
+  <text x="170" y="2541" style="font-size:16px;fill:#ffffff">시작할 때 고정 폴더의 Realm JSON을 읽어 Realm이 없을 때만 만드는 초기 설치 기능 — 생성 이후의 설정 변경은 처리하지 않음</text>
 </svg>

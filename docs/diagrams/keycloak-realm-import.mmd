@@ -38,13 +38,16 @@ sequenceDiagram
     Note over DEV,SVC: [3] 언제 읽는가 — 서버를 시작할 때마다 한 번, 부트스트랩 단계에서 (실행 중에는 파일을 감시하지 않음)
 
     KC->>KC: Quarkus 기동 → HTTP 포트 열림<br/>"started in 6.9s. Listening on: http://0.0.0.0:8080"
-    KC-->>DC: /iam/health/ready = UP → healthcheck 통과 (Import가 아직 끝나지 않았는데도)
-    DC->>SVC: depends_on: keycloak (condition: service_healthy) 충족 → 의존 서비스 시작
     rect rgb(255, 243, 205)
-        Note over KC,SVC: 부트스트랩 진행 중 — 이때 들어온 요청은 503 "Bootstrap in progress"<br/>첫 기동 실측: Employee Auth 시작 01:59:50 · Import 02:00:02~02:00:08 · Bootstrap completed 02:00:08
-        SVC-->>KC: Employee Auth 부팅 시 테스트 계정 생성 요청 → 503 → 5초 간격 재시도 (3회 후 성공)
-        KC->>PG: DB 스키마 준비 · (첫 기동이면) master Realm 생성<br/>"Initializing master realm"
+        Note over KC,SVC: 부트스트랩 진행 중 — /iam/health/ready = HTTP 503 (전체 DOWN · "Keycloak Initialized": DOWN), 요청도 503 "Bootstrap in progress"
+        loop healthcheck (10초 간격)
+            DC->>KC: GET /iam/health/ready (관리 포트 9000)
+            KC-->>DC: HTTP/1.1 503 → 상태 줄이 200이 아님 → unhealthy
+        end
+        Note over DC,SVC: 의존 서비스는 depends_on: keycloak (condition: service_healthy) 로 대기 — 아직 시작하지 않음
+        KC->>PG: DB 스키마 생성 (Liquibase · 첫 기동은 약 20~30초)
         KC->>DIR: 폴더 안의 Realm 설정 파일 읽기<br/>"Importing from directory /opt/keycloak/bin/../data/import"
+        KC->>PG: (첫 기동이면) master Realm 생성<br/>"Initializing master realm"
         KC->>KC: ${환경변수} 자리표시자를 컨테이너 환경변수 값으로 치환
         KC->>KC: "Full model import requested. Strategy: IGNORE_EXISTING"
         KC->>PG: pmart-employees Realm이 이미 있는가?
@@ -62,8 +65,13 @@ sequenceDiagram
         end
         KC->>KC: "Import finished successfully" → "Bootstrap completed"
     end
-    SVC->>KC: 재시도한 요청 성공 (Realm · Client가 준비됨)
-    Note over DC,SVC: 주의: healthcheck(depends_on: service_healthy)는 Import 완료를 보장하지 않음<br/>→ Keycloak을 부팅 시 호출하는 서비스는 503에 대비한 재시도가 필요 (HrTestAccountBootstrap: 5초 간격 최대 30회)
+    DC->>KC: GET /iam/health/ready
+    KC-->>DC: HTTP/1.1 200 (전체 UP) → healthy
+    DC->>SVC: depends_on 충족 → 의존 서비스 시작 (Realm · Client가 이미 준비됨)
+    Note over DC,SVC: 실측 (2026-11-12, 새 환경): Import 03:31:42~46 · Bootstrap completed 03:31:47 → Employee Service 03:31:57 · Employee Auth 03:32:07 · Gateway 03:32:24 시작, 부트스트랩 중 503 0건
+    rect rgb(253, 236, 236)
+        Note over DC,SVC: 수정 전 healthcheck(본문에서 "UP" 문자열 찾기)는 전체 DOWN이어도 하위 항목 "Graceful Shutdown"의 UP에 반응해 Import 중에 healthy로 판단했음<br/>→ Employee Auth가 Import 전에 시작해 503을 받고 재시도로 버팀. HTTP 상태 줄 200 검사로 수정 (compose.yaml). 503 재시도 코드는 방어용으로 유지
+    end
 
     %% ================================================================
     Note over DEV,SVC: [4] 파일을 고쳤을 때 — 고친 내용은 "Realm이 없는 상태로 시작할 때"만 반영됨
