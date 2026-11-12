@@ -397,13 +397,17 @@ healthcheck 수정 후 새 환경(`down -v` → `up`)에서 인사팀 등록부�
 2. **`flutter run`의 `Lost connection to device`는 디버그 연결만 끊긴 것**: 앱 프로세스·`adb reverse`는 유지되어 테스트를 계속할 수 있음 (Galaxy Z Flip을 접거나 Custom Tab으로 전환할 때 발생)
 3. **API 호출 결과는 서버 로그로 확인할 수 없음**: 실기기 테스트를 서버 쪽에서 검증하려면 Gateway 접근 로그가 필요 (현재 없음)
 
-### 추가 확인: 앱 강제 종료 후 재실행 — 로그인 유지 (통과)
+### 추가 확인: 앱 강제 종료 후 재실행 — 로그인 유지 (통과, 토큰 유효·만료 두 경우)
 
 `hr.admin@pmart.test`로 앱 로그인 후 `adb shell am force-stop`으로 프로세스를 끄고 다시 실행(PID 5132 → 7837).
 
 - 로그인 화면 없이 바로 직원 정보 화면(`HR000001`, `EMPLOYEE`·`HR_ADMIN`)이 표시됨. 앱 시작 시 `_restore()`가 보안 저장소의 토큰으로 `/employee-auth/me`를 호출
 - Access Token이 아직 유효해서 갱신은 일어나지 않음(`HR000001` Refresh Token 행 수 9 그대로, 화면의 토큰 만료 시각 `04:16:47Z` 그대로)
-- Access Token 만료 뒤 재실행 시의 갱신(401 → Refresh 1회)은 이번에 확인하지 않음
+- **Access Token 만료 뒤 재실행 (통과)**: 만료(`04:16:47Z`) 약 1시간 45분 뒤 `06:01:54Z`에 강제 종료·재실행(PID 13305)
+  - `06:01:57Z`(실행 3초 뒤) Refresh Token으로 갱신됨 → `/me` 401 → Refresh 1회 경로가 실제로 동작
+  - Rotation: 이전 토큰 `used_at` 기록, 같은 family(`c853f710…`)로 새 토큰 1개 발급
+  - 새 Refresh Token 만료 `12:01:47Z` 그대로 (로그인 시점 + 8시간 고정, 연장 없음, D19)
+  - 화면: 로그인 화면 없이 `HR000001` 표시, 토큰 만료 시각이 `06:16:57Z`(갱신 + 15분)로 바뀜
 
 ### 결함 1: 앱 로그인이 Callback에서 `invalid_state`로 실패하면 Keycloak 세션이 남음 → 다음 로그인이 비밀번호 없이 진행됨 (조치 미정)
 
